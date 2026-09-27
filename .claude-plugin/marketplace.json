@@ -1,0 +1,11 @@
+{
+  "name": "licoes",
+  "owner": { "name": "LIÇÕES GERAIS" },
+  "plugins": [
+    {
+      "name": "licoes",
+      "source": "./plugins/licoes",
+      "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação."
+    }
+  ]
+}

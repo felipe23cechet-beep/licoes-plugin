@@ -1,0 +1,14 @@
+{
+  "name": "licoes",
+  "displayName": "LIÇÕES GERAIS",
+  "version": "0.1.0",
+  "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação, e o economia.js mostra quanto o contexto custou nesta máquina.",
+  "userConfig": {
+    "chave": {
+      "type": "string",
+      "title": "Chave de licença",
+      "description": "A chave do e-mail da compra (começa com lg_). Sem ela, o economia.js funciona; as lições, não.",
+      "sensitive": true
+    }
+  }
+}
