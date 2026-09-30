@@ -2,7 +2,7 @@
   "mcpServers": {
     "licoes": {
       "type": "http",
-      "url": "https://licoes-servico.vercel.app/api/mcp",
+      "url": "https://licoes-servico.felipe23cechet.workers.dev/api/mcp",
       "headers": { "Authorization": "Bearer ${user_config.chave}" },
       "headersHelper": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/maquina.js\""
     }

@@ -2,7 +2,7 @@
 // Início de sessão: a assinatura está em dia? há plugin novo? O servidor responde em até 3 s; fora do ar,
 // UMA linha e segue — nunca trava a sessão (CLAUDE.md do serviço, "degradar, nunca travar").
 // O que este gancho imprime entra no contexto do Claude: só escreve quando há algo a dizer.
-const URL = 'https://licoes-servico.vercel.app/api/estado';
+const URL = 'https://licoes-servico.felipe23cechet.workers.dev/api/estado';
 const versao = require('../.claude-plugin/plugin.json').version;
 const chave = process.env.CLAUDE_PLUGIN_OPTION_CHAVE || '';
 const menor = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number);
