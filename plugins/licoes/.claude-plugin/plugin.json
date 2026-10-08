@@ -1,14 +1,29 @@
 {
   "name": "licoes",
   "displayName": "LIÇÕES GERAIS",
-  "version": "0.2.1",
-  "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação, e o economia.js mostra quanto o contexto custou nesta máquina.",
+  "version": "0.4.0",
+  "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação; e os ganchos da base rodam na sua máquina — segredo no commit, chat parado, passagem de bastão, tela e (se ligar) as lições próprias.",
+  "author": {
+    "name": "LIÇÕES GERAIS"
+  },
+  "types": "./types/index.d.ts",
   "userConfig": {
     "chave": {
       "type": "string",
       "title": "Chave de licença",
-      "description": "A chave do e-mail da compra (começa com lg_). Sem ela, o economia.js funciona; as lições, não.",
+      "description": "A chave do e-mail da compra (começa com lg_). Sem ela, o economia.js e os ganchos funcionam; as lições, não.",
       "sensitive": true
+    },
+    "destilar": {
+      "type": "boolean",
+      "title": "Aprender sozinho com os seus chats",
+      "description": "No fim de cada chat, o Haiku lê a conversa e grava o que custou caro como lição própria (marca ‹auto›). Custa em média US$ 0,045 por chat, do seu plano. Desligado, nada roda.",
+      "default": false
+    },
+    "pasta_meu": {
+      "type": "directory",
+      "title": "Pasta das lições próprias",
+      "description": "Onde ficam as suas lições (LICOES-PROPRIAS.md). Vazio = ~/.claude/licoes/meu. Usa 2 computadores? Aponte para uma pasta do OneDrive ou do Dropbox."
     }
   }
 }

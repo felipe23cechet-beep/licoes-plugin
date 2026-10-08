@@ -8,6 +8,15 @@ const chave = process.env.CLAUDE_PLUGIN_OPTION_CHAVE || '';
 const menor = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number);
   for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false; };
 
+// As lições PRÓPRIAS (o destilar-licoes grava, com a opção "destilar"): existindo alguma, UMA linha com o caminho (~40 tokens)
+// — sem ela, o agente não sabia que o arquivo existe (07/10/2026, revisão × Helena: o start.js dela põe o índice da memória)
+try {
+  const fs = require('fs'), path = require('path'), os = require('os');
+  const meu = path.join(process.env.CLAUDE_PLUGIN_OPTION_PASTA_MEU || path.join(os.homedir(), '.claude', 'licoes', 'meu'), 'LICOES-PROPRIAS.md');
+  const n = (fs.readFileSync(meu, 'utf8').match(/^### /gm) || []).length;
+  if (n) console.log(`[lições] ${n} lição(ões) própria(s) desta pessoa em ${meu.split(path.sep).join('/')} — antes de agir, grep -n "^### " nele e leia só a que casar com a tarefa.`);
+} catch {}
+
 (async () => {
   if (!chave) { console.log('[lições] Sem chave de licença: as lições estão desligadas (o economia.js funciona). Para ligar: /plugin → licoes → configurar.'); return; }
   try {

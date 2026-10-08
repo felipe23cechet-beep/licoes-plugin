@@ -8,15 +8,16 @@
 // Os dois ralos (09 §9.15 e §9.14): VOLTA FRIA — a mensagem que chega a um chat de 100 mil+ tokens depois
 // de 60+ min parado e reescreve o cache inteiro; e CONVERSA ACIMA DE 200 MIL — cada chamada relê o que
 // passou disso. Valores em US$ de API: a assinatura não publica o limite em tokens, mas gasta na mesma proporção.
-// Preços: platform.claude.com/docs/en/about-claude/pricing, conferidos em 22/09/2026.
+// Preços: platform.claude.com/docs/en/about-claude/pricing, conferidos em 07/10/2026.
 const fs = require('fs'), path = require('path'), os = require('os');
 // [trecho do nome do modelo, US$ por milhão de entrada, de leitura de cache] — saída = 5× a entrada
 const PRECOS = [['fable-5-1', 10, 0.25], ['fable', 10, 1], ['opus-5-5', 4, 0.2], ['opus', 5, 0.5],
-  ['sonnet-5', 2, 0.2], ['sonnet', 3, 0.3], ['haiku', 1, 0.1]];
+  ['sonnet-5-5', 2, 0.1], ['sonnet-5', 2, 0.2], ['sonnet', 3, 0.3], ['haiku-5', 0.1, 0.01], ['haiku', 1, 0.1]];
+// o Haiku 5.5 cobra pelo tamanho do pedido: acima de 100 mil tokens de entrada, tudo custa 5× (09 §9.2)
 const preco = m => PRECOS.find(([k]) => (m || '').includes(k)) || [null, 0, 0];
 const ctx = u => (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
 const fatorEscrita = u => ((u.cache_creation && u.cache_creation.ephemeral_1h_input_tokens) || 0) > 0 ? 2 : 1.25;
-const custo = c => { const [, e, l] = preco(c.model), u = c.u;
+const custo = c => { const u = c.u, [k, e0, l0] = preco(c.model), x = k === 'haiku-5' && ctx(u) > 100000 ? 5 : 1, e = e0 * x, l = l0 * x;
   return ((u.input_tokens || 0) * e + (u.cache_creation_input_tokens || 0) * e * fatorEscrita(u)
     + (u.cache_read_input_tokens || 0) * l + (u.output_tokens || 0) * e * 5) / 1e6; };
 

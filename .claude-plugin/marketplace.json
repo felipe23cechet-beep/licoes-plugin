@@ -1,6 +1,9 @@
 {
   "name": "licoes",
-  "owner": { "name": "LIÇÕES GERAIS" },
+  "owner": {
+    "name": "LIÇÕES GERAIS"
+  },
+  "description": "O plugin das LIÇÕES GERAIS: as lições do Claude Code por assinatura, e os ganchos da base na sua máquina.",
   "plugins": [
     {
       "name": "licoes",
