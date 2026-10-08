@@ -18,7 +18,9 @@ import type { PassaBastaoPainel } from '../types'
 //    atrás da mensagem, rodou 8 min depois, apagou a resposta final e colou um prompt velho).
 // 8) O estado do mod se perde (uma recarga zera as variáveis e cancela os timers): o fim do turno confere o arquivo
 //    mesmo assim — gravado neste turno e não USADO, vale o que ele diz (06/10/2026: o agente gravou CONTINUAR e o chat
-//    ficou parado, sem limpar nem avisar). E a passagem que falha avisa, em vez de calar.
+//    ficou parado, sem limpar nem avisar). E a passagem que falha avisa, em vez de calar. Mas nunca o que foi gravado
+//    antes de ESTE chat começar (08/10/2026: carregado no meio do turno, o mod colou o prompt do chat anterior depois da
+//    resposta de parada, e o chat seguiu trabalhando contra a vontade do dono).
 // 7) /pass-baton num chat sem conversa não pede estado: cola o prompt que o chat anterior deixou pronto, ou diz que
 //    não há o que passar (04/10/2026: pedia "o contexto chegou ao limite" num chat vazio).
 // 10) O relato não se perde (07/10/2026): com CONTINUAR a resposta final some com o /clear e o dono não lê o prompt colado;
@@ -55,7 +57,7 @@ const pedido = (motivo: string) => [
   `1. UMA edição no arquivo de estado do projeto (o PROGRESSO.md, se houver), com a linha do título do bloco como âncora: onde parou e o próximo passo.`,
   `2. UMA gravação de \`${ARQUIVO}\`: o prompt de retomada, na voz do dono, que um chat novo vai receber colado. Com CONTINUAR, ele COMEÇA pela seção "PARA O DONO": o que foi feito e o que foi ACHADO neste chat, uma linha por item, com o número; e, citados ao pé da letra, os pedidos e perguntas que o dono fez neste chat, cada um com o que foi feito dele ou "ainda não" (o dono não lê o prompt colado, e o chat que some leva junto o que ninguém repetir). Se o prompt que abriu ESTE chat já trazia uma "PARA O DONO", ela segue somada à nova — ninguém a entregou ainda. Logo abaixo, a ordem: "esta seção só se entrega quando o trabalho PARAR de vez: no resumo da mensagem final do turno que espera o dono, junto do que você fizer, respondendo cada pedido marcado ainda não. Nunca no começo de um chat, nem numa passagem com CONTINUAR (aí ela segue somada no próximo prompt)". Com ESPERAR, o arquivo vai SEM essa seção: o relato vai na sua mensagem final (passo 3). Depois, o que ler primeiro e o que fazer em seguida. Sem chave, senha ou token no texto: o arquivo fica no disco e viaja pela nuvem.`,
   `   A 1ª linha do arquivo é só a marca: \`CONTINUAR\` se ainda há item decidido que não depende do dono — o padrão, mesmo com um relato a fazer (o relato vai somado na seção PARA O DONO e chega a ele quando o trabalho parar de vez; o mod limpa a conversa e cola o prompt),`,
-  `   ou \`ESPERAR\` só se o próximo passo só depende do dono (escolha dele, coisa que só ele faz, ação irreversível, mudança de direção) ou se a lista decidida acabou: aí o mod NÃO limpa, e ele cola com ${PASSAR} quando quiser.`,
+  `   ou \`ESPERAR\` só se o próximo passo só depende do dono (escolha dele, coisa que só ele faz, ação irreversível, mudança de direção), se a lista decidida acabou, ou se o dono pediu para PARAR neste chat ("vou parar", "para aqui", "continuo depois") — pedido de parada é ESPERAR, mesmo com item pela frente: aí o mod NÃO limpa, e ele cola com ${PASSAR} quando quiser.`,
   `3. Encerre o turno. Com CONTINUAR, a mensagem final é UMA linha só ("Passagem gravada; o chat recomeça sozinho."): sem resumo, sem prompt, sem a frase do chat novo — o mod limpa a conversa logo depois e ninguém a lê; o relato vai na seção PARA O DONO do prompt. Isto vale acima de qualquer regra de resumo do projeto. Se a marca for ESPERAR, ESTA é a mensagem que para de vez: o resumo dela traz o relato inteiro — a PARA O DONO que o prompt deste chat trazia, somada ao que este chat fez e achou — e responde cada pedido do dono; depois, o bloco do chat novo como sempre: o PROMPT inteiro, o mesmo texto do arquivo sem a marca — sem citar o comando ${PASSAR} (a pessoa cola o prompt num chat novo; o comando não se menciona).`,
 ].join('\n')
 const PEDIDO = pedido('O contexto chegou ao limite de passagem.')
@@ -72,6 +74,10 @@ let avisado = false
 // mensagem na fila) pode acabar antes do que atende o pedido. Só desiste no segundo.
 let semArquivo = 0
 let ultimoFim = 0
+// Um turno principal está rodando: cada chamada ao modelo renova o cache, então ele está em uso.
+let emTurno = false
+// Quando os limites que a barra mostra foram medidos (por esta sessão ou, no limites.json, por outra).
+let limitesEm = 0
 let tokens: number | undefined
 // Turnos principais iniciados: se mudou entre o fim do turno e a limpeza, a pessoa voltou a conversar.
 let iniciados = 0
@@ -145,12 +151,8 @@ const NOMES: Record<string, string> = {
 // limites.json (de onde o gancho chat-parado avisa em 80% e 95%) é este mod, no formato da statusline.js.
 async function medir($: EngineInterface) {
   const u = await $.session.usage({ breakdown: 'summary' })
-  const limites = (u.rateLimits ?? []).map(l => ({
-    janela: l.kind,
-    pct: l.percentUsed,
-    zeraEm: l.resetsAt ? Date.parse(l.resetsAt) || null : null,
-  }))
-  medida = { ...medida, limites, custo: u.cost?.usd ?? null }
+  medida = { ...medida, custo: u.cost?.usd ?? null }
+  await guardarLimites($, u.rateLimits ?? [])
   const b = u.context.breakdown
   if (b) {
     const usados = b.categories.filter(c => c.kind === 'used' && c.tokens > 0).sort((x, y) => y.tokens - x.tokens)
@@ -163,31 +165,43 @@ async function medir($: EngineInterface) {
       memoria: m ? { arquivo: m.path.replaceAll('\\', '/').split('/').slice(-2).join('/'), tokens: m.tokens } : null,
     }
   }
+}
+
+// Os limites que o motor acabou de medir: na barra e no limites.json. Sem plano, nada se grava fora do projeto.
+async function guardarLimites($: EngineInterface, medidos: { kind: string; percentUsed: number; resetsAt?: string | null }[]) {
+  const limites = medidos.map(l => ({
+    janela: l.kind,
+    pct: l.percentUsed,
+    zeraEm: l.resetsAt ? Date.parse(l.resetsAt) || null : null,
+  }))
   if (!limites.length) return
+  medida = { ...medida, limites }
+  limitesEm = await $.clock.now()
   const home = (await $.env.get('USERPROFILE').catch(() => undefined)) || (await $.env.get('HOME').catch(() => undefined))
   if (!home) return
-  const arq: Record<string, unknown> = { gravado: await $.clock.now() }
+  const arq: Record<string, unknown> = { gravado: limitesEm }
   for (const l of limites) arq[l.janela] = { pct: l.pct, volta: l.zeraEm ? Math.round(l.zeraEm / 1000) : undefined }
   await $.fs.write(`${home.replaceAll('\\', '/')}/.claude/ganchos/limites.json`, JSON.stringify(arq)).catch(() => {})
 }
 
-// O limites.json da sessão anterior, para a barra não nascer sem os limites (pedido do dono, 08/10/2026).
+// O limites.json, quando outra sessão o gravou depois da última medida desta: a barra não nasce sem os limites
+// nem fica parada no número velho enquanto outro chat gasta (08/10/2026).
 async function lerLimites($: EngineInterface) {
-  if (medida.limites?.length) return
   const home = (await $.env.get('USERPROFILE').catch(() => undefined)) || (await $.env.get('HOME').catch(() => undefined))
   if (!home) return
   const arq = JSON.parse(await $.fs.read(`${home.replaceAll('\\', '/')}/.claude/ganchos/limites.json`))
+  if (typeof arq.gravado !== 'number' || arq.gravado <= limitesEm) return
   const limites = Object.entries(arq)
     .filter(([, l]) => l && typeof l === 'object' && typeof (l as { pct?: unknown }).pct === 'number')
     .map(([janela, l]) => {
       const { pct, volta } = l as { pct: number; volta?: number }
       return { janela, pct, zeraEm: volta ? volta * 1000 : null }
     })
-  if (limites.length) medida = { ...medida, limites }
+  if (limites.length) (medida = { ...medida, limites }), (limitesEm = arq.gravado)
 }
 
 // Na barra: 5 h e semana, com o que já zerou desde a medida mostrado como 0%.
-const JANELAS_CURTAS: Record<string, string> = { five_hour: '5 h', seven_day: 'semana' }
+const JANELAS_CURTAS: Record<string, string> = { five_hour: '5h', seven_day: 'sem' }
 function limitesNaBarra(agora: number) {
   return (medida.limites ?? [])
     .filter(l => JANELAS_CURTAS[l.janela])
@@ -197,16 +211,26 @@ function limitesNaBarra(agora: number) {
 async function mostrar($: EngineInterface) {
   const agora = await $.clock.now()
   // O painel se redesenha quando isto muda.
-  void $.state.set(PAINEL, { tokens: tokens ?? null, ultimoFim, agora, limite: LIMITE, ...medida }).catch(() => {})
-  const k = tokens === undefined ? '?' : `${Math.round(tokens / 1000)} mil`
+  void $.state.set(PAINEL, { tokens: tokens ?? null, ultimoFim, emTurno, agora, limite: LIMITE, ...medida }).catch(() => {})
+  // Curta: a faixa do app corta em ~40 caracteres depois do nome do plugin (print do dono, 08/10/2026).
+  // A ordem é a da urgência; o que se corta primeiro é a semana. O /panel diz por extenso.
+  const k = `ctx ${tokens === undefined ? '?' : `${Math.round(tokens / 1000)}k`}`
   const resta = Math.ceil((CACHE_MS - (agora - ultimoFim)) / 60_000)
-  const partes =
-    ultimoFim === 0
-      ? [`contexto ${k}`]
+  const partes = emTurno
+    ? ['cache ativo', k]
+    : ultimoFim === 0
+      ? [k]
       : resta > 0
-        ? [`cache ${resta} min`, `contexto ${k}`]
-        : ['cache vencido', `contexto ${k}: chat novo sai mais barato`]
+        ? [`cache ${resta}min`, k]
+        : ['cache vencido', k]
   $.ui.status([...partes, ...limitesNaBarra(agora)].join(' · '))
+}
+
+async function atualizar($: EngineInterface) {
+  const t = (await $.session.usage()).context.tokens
+  if (typeof t === 'number') tokens = t
+  await lerLimites($).catch(() => {})
+  await mostrar($)
 }
 
 async function pedir($: EngineInterface) {
@@ -219,7 +243,9 @@ async function pedir($: EngineInterface) {
 }
 
 // O prompt gravado depois de `desde`, sem a linha da marca. Sem marca vale CONTINUAR; USADO já foi colado.
-async function lerArquivo($: EngineInterface, desde = pedidoEm) {
+// Só o deste chat (o /clear recomeça a conta), salvo `doAnterior`: o /pass-baton num chat vazio.
+async function lerArquivo($: EngineInterface, desde = pedidoEm, doAnterior = false) {
+  if (!doAnterior) desde = Math.max(desde, (await $.session.usage()).startedAt ?? 0)
   const pastas = await pastasVistas($)
   let caminho = ''
   let st: { mtimeMs: number } | undefined
@@ -301,7 +327,7 @@ async function painel($: EngineInterface) {
 async function passarAgora($: EngineInterface) {
   // Chat sem conversa: não há estado a gravar. Cola o prompt que o chat anterior deixou, se houver.
   if (!conversou && fase !== 'pronto' && fase !== 'pedido') {
-    const arq = await lerArquivo($, 0)
+    const arq = await lerArquivo($, 0, true)
     if (!arq) return { text: `este chat ainda não tem conversa, e não há prompt pronto em ${ARQUIVO}. Nada a passar.` }
     await marcarUsado($, arq)
     $.clock.after(500, () => void $.prompt.submit({ text: arq.texto, asUser: true }).catch(() => {}))
@@ -346,7 +372,16 @@ export const register: Register = on => {
     }
     // Os limites do plano na barra desde o começo: o motor só os mede depois da primeira resposta.
     await lerLimites($).catch(() => {})
-    $.clock.every(60_000, () => void mostrar($).catch(() => {}))
+    // A cada 30 s: o contexto (no meio de um turno longo, o fim do turno demora) e os limites que outra sessão gravou.
+    $.clock.every(30_000, () => void atualizar($).catch(() => {}))
+    void mostrar($).catch(() => {})
+    return next(e)
+  })
+
+  // O motor avisa quando um limite andou um ponto (a cada resposta, também no meio do turno) e no fim de cada turno.
+  on('session.measure', async ($, e, next) => {
+    if (e.changed.includes('rateLimits')) await guardarLimites($, e.rateLimits).catch(() => {})
+    if (typeof e.context.tokens === 'number') tokens = e.context.tokens
     void mostrar($).catch(() => {})
     return next(e)
   })
@@ -378,7 +413,8 @@ export const register: Register = on => {
     for (const c of p?.partes ?? []) linhas.push({ texto: `  ${c.nome}: ${mil(c.tokens)}`, apagado: true })
     if (typeof p?.chatNovo === 'number') linhas.push({ texto: `um chat novo nasceria com ~${mil(p.chatNovo)} (tudo menos a conversa)` })
     if (p?.memoria) linhas.push({ texto: `maior memória: ${p.memoria.arquivo}, ${mil(p.memoria.tokens)}`, apagado: true })
-    if (!p?.ultimoFim) linhas.push({ texto: 'cache: nenhum turno acabou ainda', apagado: true })
+    if (p?.emTurno) linhas.push({ texto: 'cache: em uso (o turno está rodando)' })
+    else if (!p?.ultimoFim) linhas.push({ texto: 'cache: nenhum turno acabou ainda', apagado: true })
     else {
       const resta = Math.ceil((CACHE_MS - (agora - p.ultimoFim)) / 60_000)
       linhas.push(resta > 0 ? { texto: `cache: ${resta} min` } : { texto: 'cache vencido: chat novo sai mais barato', cor: 'warning' })
@@ -433,6 +469,8 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     iniciados++
+    emTurno = true
+    void mostrar($).catch(() => {})
     comecouEm = await $.clock.now()
     await pastasVistas($).catch(() => {})
     conversou = true
@@ -446,6 +484,7 @@ export const register: Register = on => {
     const r = await next(e)
     if (e.agentId) return r
     conversou = true
+    emTurno = false
     ultimoFim = await $.clock.now()
     tokens = (await $.session.usage()).context.tokens
     void medir($).then(() => mostrar($)).catch(() => {})

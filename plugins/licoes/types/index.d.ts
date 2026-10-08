@@ -14,6 +14,8 @@ export type PassaBastaoPassagem = {
 export type PassaBastaoPainel = {
   tokens: number | null
   ultimoFim: number
+  // Um turno principal rodando: o cache está em uso.
+  emTurno?: boolean
   agora: number
   limite: number
   // Janelas do plano (five_hour, seven_day): % usado e quando zera (ms; null = sem data).
