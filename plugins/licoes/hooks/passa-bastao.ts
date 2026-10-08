@@ -43,17 +43,23 @@ import type { PassaBastaoPainel } from '../types'
 let LIMITE = 150_000
 const CACHE_MS = 60 * 60 * 1000
 const ARQUIVO = '.passa-bastao.md'
+// Solto (CLAUDE_CODE_PLUGIN_DIRS), o mod registra /pass-baton e /panel ao abrir a sessão. Dentro do plugin licoes, os dois
+// são skills do plugin (/licoes:pass-baton, /licoes:panel), que aparecem no menu antes da sessão abrir e que este mod
+// responde sem chamar o modelo; o montar-plugin troca as duas linhas abaixo (08/10/2026: no app, os comandos registrados
+// só apareciam depois da primeira mensagem, e o dono procurou por /licoes:).
+const REGISTRAR = false
+const PASSAR = '/licoes:pass-baton'
 
 const pedido = (motivo: string) => [
   `[passa-bastão] ${motivo} Isto NÃO é motivo para parar: é a troca de chat, e o trabalho segue no chat novo. Grave a passagem em NO MÁXIMO 3 chamadas de ferramenta, sem reler nada (o que precisa já está na conversa):`,
   `1. UMA edição no arquivo de estado do projeto (o PROGRESSO.md, se houver), com a linha do título do bloco como âncora: onde parou e o próximo passo.`,
   `2. UMA gravação de \`${ARQUIVO}\`: o prompt de retomada, na voz do dono, que um chat novo vai receber colado. Com CONTINUAR, ele COMEÇA pela seção "PARA O DONO": o que foi feito e o que foi ACHADO neste chat, uma linha por item, com o número; e, citados ao pé da letra, os pedidos e perguntas que o dono fez neste chat, cada um com o que foi feito dele ou "ainda não" (o dono não lê o prompt colado, e o chat que some leva junto o que ninguém repetir). Se o prompt que abriu ESTE chat já trazia uma "PARA O DONO", ela segue somada à nova — ninguém a entregou ainda. Logo abaixo, a ordem: "esta seção só se entrega quando o trabalho PARAR de vez: no resumo da mensagem final do turno que espera o dono, junto do que você fizer, respondendo cada pedido marcado ainda não. Nunca no começo de um chat, nem numa passagem com CONTINUAR (aí ela segue somada no próximo prompt)". Com ESPERAR, o arquivo vai SEM essa seção: o relato vai na sua mensagem final (passo 3). Depois, o que ler primeiro e o que fazer em seguida. Sem chave, senha ou token no texto: o arquivo fica no disco e viaja pela nuvem.`,
   `   A 1ª linha do arquivo é só a marca: \`CONTINUAR\` se ainda há item decidido que não depende do dono — o padrão, mesmo com um relato a fazer (o relato vai somado na seção PARA O DONO e chega a ele quando o trabalho parar de vez; o mod limpa a conversa e cola o prompt),`,
-  `   ou \`ESPERAR\` só se o próximo passo só depende do dono (escolha dele, coisa que só ele faz, ação irreversível, mudança de direção) ou se a lista decidida acabou: aí o mod NÃO limpa, e ele cola com /pass-baton quando quiser.`,
-  `3. Encerre o turno. Com CONTINUAR, a mensagem final é UMA linha só ("Passagem gravada; o chat recomeça sozinho."): sem resumo, sem prompt, sem a frase do chat novo — o mod limpa a conversa logo depois e ninguém a lê; o relato vai na seção PARA O DONO do prompt. Isto vale acima de qualquer regra de resumo do projeto. Se a marca for ESPERAR, ESTA é a mensagem que para de vez: o resumo dela traz o relato inteiro — a PARA O DONO que o prompt deste chat trazia, somada ao que este chat fez e achou — e responde cada pedido do dono; depois, o bloco do chat novo como sempre: o PROMPT inteiro, o mesmo texto do arquivo sem a marca — sem citar o comando /pass-baton (a pessoa cola o prompt num chat novo; o comando não se menciona).`,
+  `   ou \`ESPERAR\` só se o próximo passo só depende do dono (escolha dele, coisa que só ele faz, ação irreversível, mudança de direção) ou se a lista decidida acabou: aí o mod NÃO limpa, e ele cola com ${PASSAR} quando quiser.`,
+  `3. Encerre o turno. Com CONTINUAR, a mensagem final é UMA linha só ("Passagem gravada; o chat recomeça sozinho."): sem resumo, sem prompt, sem a frase do chat novo — o mod limpa a conversa logo depois e ninguém a lê; o relato vai na seção PARA O DONO do prompt. Isto vale acima de qualquer regra de resumo do projeto. Se a marca for ESPERAR, ESTA é a mensagem que para de vez: o resumo dela traz o relato inteiro — a PARA O DONO que o prompt deste chat trazia, somada ao que este chat fez e achou — e responde cada pedido do dono; depois, o bloco do chat novo como sempre: o PROMPT inteiro, o mesmo texto do arquivo sem a marca — sem citar o comando ${PASSAR} (a pessoa cola o prompt num chat novo; o comando não se menciona).`,
 ].join('\n')
 const PEDIDO = pedido('O contexto chegou ao limite de passagem.')
-const PEDIDO_DA_PESSOA = pedido('A pessoa pediu a passagem para um chat novo (/pass-baton).')
+const PEDIDO_DA_PESSOA = pedido(`A pessoa pediu a passagem para um chat novo (${PASSAR}).`)
 
 // livre → pedido → (CONTINUAR) limpa e volta a livre · (ESPERAR) pronto, até a pessoa pedir ou o trabalho voltar.
 let fase: 'livre' | 'pedido' | 'pronto' | 'falhou' | 'cancelado' = 'livre'
@@ -110,7 +116,7 @@ function falhou($: EngineInterface, erro: unknown) {
   agendado = false
   void guardar($)
   $.ui.log(`a passagem falhou: ${String(erro)}`, { to: 'debug' })
-  $.ui.toast(`A passagem falhou (${String(erro).slice(0, 120)}); NÃO limpei. /pass-baton tenta de novo`, {
+  $.ui.toast(`A passagem falhou (${String(erro).slice(0, 120)}); NÃO limpei. ${PASSAR} tenta de novo`, {
     timeoutMs: 15_000,
   })
 }
@@ -165,18 +171,42 @@ async function medir($: EngineInterface) {
   await $.fs.write(`${home.replaceAll('\\', '/')}/.claude/ganchos/limites.json`, JSON.stringify(arq)).catch(() => {})
 }
 
+// O limites.json da sessão anterior, para a barra não nascer sem os limites (pedido do dono, 08/10/2026).
+async function lerLimites($: EngineInterface) {
+  if (medida.limites?.length) return
+  const home = (await $.env.get('USERPROFILE').catch(() => undefined)) || (await $.env.get('HOME').catch(() => undefined))
+  if (!home) return
+  const arq = JSON.parse(await $.fs.read(`${home.replaceAll('\\', '/')}/.claude/ganchos/limites.json`))
+  const limites = Object.entries(arq)
+    .filter(([, l]) => l && typeof l === 'object' && typeof (l as { pct?: unknown }).pct === 'number')
+    .map(([janela, l]) => {
+      const { pct, volta } = l as { pct: number; volta?: number }
+      return { janela, pct, zeraEm: volta ? volta * 1000 : null }
+    })
+  if (limites.length) medida = { ...medida, limites }
+}
+
+// Na barra: 5 h e semana, com o que já zerou desde a medida mostrado como 0%.
+const JANELAS_CURTAS: Record<string, string> = { five_hour: '5 h', seven_day: 'semana' }
+function limitesNaBarra(agora: number) {
+  return (medida.limites ?? [])
+    .filter(l => JANELAS_CURTAS[l.janela])
+    .map(l => `${JANELAS_CURTAS[l.janela]} ${l.zeraEm && l.zeraEm <= agora ? 0 : Math.round(l.pct)}%`)
+}
+
 async function mostrar($: EngineInterface) {
   const agora = await $.clock.now()
   // O painel se redesenha quando isto muda.
   void $.state.set(PAINEL, { tokens: tokens ?? null, ultimoFim, agora, limite: LIMITE, ...medida }).catch(() => {})
   const k = tokens === undefined ? '?' : `${Math.round(tokens / 1000)} mil`
-  if (ultimoFim === 0) return $.ui.status(`contexto ${k}`)
   const resta = Math.ceil((CACHE_MS - (agora - ultimoFim)) / 60_000)
-  $.ui.status(
-    resta > 0
-      ? `cache ${resta} min · contexto ${k}`
-      : `cache vencido · contexto ${k}: chat novo sai mais barato`,
-  )
+  const partes =
+    ultimoFim === 0
+      ? [`contexto ${k}`]
+      : resta > 0
+        ? [`cache ${resta} min`, `contexto ${k}`]
+        : ['cache vencido', `contexto ${k}: chat novo sai mais barato`]
+  $.ui.status([...partes, ...limitesNaBarra(agora)].join(' · '))
 }
 
 async function pedir($: EngineInterface) {
@@ -218,7 +248,7 @@ function desistir($: EngineInterface) {
   semArquivo = 0
   agendado = false
   void guardar($)
-  $.ui.toast('Você mandou outra mensagem antes da limpeza; NÃO limpei a conversa. /pass-baton quando quiser', {
+  $.ui.toast(`Você mandou outra mensagem antes da limpeza; NÃO limpei a conversa. ${PASSAR} quando quiser`, {
     timeoutMs: 10_000,
   })
 }
@@ -259,6 +289,40 @@ async function passar($: EngineInterface, turno: number, tentou = false) {
   await $.prompt.submit({ text: arq.texto, asUser: true })
 }
 
+// /panel (ou /licoes:panel, no plugin).
+async function painel($: EngineInterface) {
+  await medir($).catch(() => {})
+  await mostrar($).catch(() => {})
+  await $.ui.open({ id: PANE, title: 'Passa-bastão' })
+  return { text: 'painel aberto.' }
+}
+
+// Pedido pela pessoa: limpa sempre. Com o prompt já pronto, cola na hora, sem pedir de novo.
+async function passarAgora($: EngineInterface) {
+  // Chat sem conversa: não há estado a gravar. Cola o prompt que o chat anterior deixou, se houver.
+  if (!conversou && fase !== 'pronto' && fase !== 'pedido') {
+    const arq = await lerArquivo($, 0)
+    if (!arq) return { text: `este chat ainda não tem conversa, e não há prompt pronto em ${ARQUIVO}. Nada a passar.` }
+    await marcarUsado($, arq)
+    $.clock.after(500, () => void $.prompt.submit({ text: arq.texto, asUser: true }).catch(() => {}))
+    return { text: 'colando o prompt que o chat anterior deixou pronto.' }
+  }
+  forcado = true
+  // Passagem que falhou com o prompt já gravado: cola esse, sem pedir de novo.
+  if (fase === 'falhou' && (await arquivoDoTurno($))) fase = 'pronto'
+  if (fase === 'pronto') {
+    fase = 'pedido'
+    await guardar($)
+    const turno = iniciados
+    $.clock.after(500, () => void passar($, turno).catch(err => falhou($, err)))
+    return { text: 'limpando a conversa e colando o prompt pronto.' }
+  }
+  if (fase === 'pedido') return { text: 'a passagem já foi pedida; quando o turno acabar, a conversa recomeça.' }
+  fase = 'pedido'
+  $.clock.after(500, () => void pedir($).catch(err => falhou($, err)))
+  return { text: 'vou pedir o estado ao agente; quando ele gravar, a conversa recomeça.' }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const n = Number(await $.env.get('PASSA_BASTAO_LIMITE').catch(() => undefined))
@@ -273,22 +337,23 @@ export const register: Register = on => {
         agendar($, iniciados)
       }
     }
-    await $.command.register({
-      name: 'pass-baton',
-      description: 'Grava o estado, limpa a conversa e recomeça num chat novo (passa-bastão)',
-    })
-    await $.command.register({ name: 'panel', description: 'Painel do passa-bastão: contexto até o limite, cache e passagem' })
+    if (REGISTRAR) {
+      await $.command.register({
+        name: 'pass-baton',
+        description: 'Grava o estado, limpa a conversa e recomeça num chat novo (passa-bastão)',
+      })
+      await $.command.register({ name: 'panel', description: 'Painel do passa-bastão: contexto até o limite, cache e passagem' })
+    }
+    // Os limites do plano na barra desde o começo: o motor só os mede depois da primeira resposta.
+    await lerLimites($).catch(() => {})
     $.clock.every(60_000, () => void mostrar($).catch(() => {}))
     void mostrar($).catch(() => {})
     return next(e)
   })
 
-  on('command.run', { command: 'panel' }, async $ => {
-    await medir($).catch(() => {})
-    await mostrar($).catch(() => {})
-    await $.ui.open({ id: PANE, title: 'Passa-bastão' })
-    return { text: 'painel aberto.' }
-  })
+  // Os dois nomes: o do mod solto e o da skill do plugin.
+  on('command.run', { command: 'panel' }, painel)
+  on('command.run', { command: 'licoes:panel' }, painel)
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
@@ -333,38 +398,15 @@ export const register: Register = on => {
       livre: 'nenhuma passagem em curso',
       pedido: 'pedida: esperando o agente gravar o arquivo',
       pronto: 'pronta (ESPERAR): o prompt está na resposta, para colar num chat novo',
-      falhou: 'falhou: /pass-baton tenta de novo',
-      cancelado: 'cancelada (Esc): /pass-baton quando quiser',
+      falhou: `falhou: ${PASSAR} tenta de novo`,
+      cancelado: `cancelada (Esc): ${PASSAR} quando quiser`,
     }
     linhas.push({ texto: `passagem: ${FASES[fase]}`, apagado: fase === 'livre' })
     return h(Box, { flexDirection: 'column' }, ...linhas.map(l => h(Text, { color: l.cor, dimColor: l.apagado }, l.texto))) as RenderElement
   })
 
-  // Pedido pela pessoa: limpa sempre. Com o prompt já pronto, cola na hora, sem pedir de novo.
-  on('command.run', { command: 'pass-baton' }, async $ => {
-    // Chat sem conversa: não há estado a gravar. Cola o prompt que o chat anterior deixou, se houver.
-    if (!conversou && fase !== 'pronto' && fase !== 'pedido') {
-      const arq = await lerArquivo($, 0)
-      if (!arq) return { text: `este chat ainda não tem conversa, e não há prompt pronto em ${ARQUIVO}. Nada a passar.` }
-      await marcarUsado($, arq)
-      $.clock.after(500, () => void $.prompt.submit({ text: arq.texto, asUser: true }).catch(() => {}))
-      return { text: 'colando o prompt que o chat anterior deixou pronto.' }
-    }
-    forcado = true
-    // Passagem que falhou com o prompt já gravado: cola esse, sem pedir de novo.
-    if (fase === 'falhou' && (await arquivoDoTurno($))) fase = 'pronto'
-    if (fase === 'pronto') {
-      fase = 'pedido'
-      await guardar($)
-      const turno = iniciados
-      $.clock.after(500, () => void passar($, turno).catch(err => falhou($, err)))
-      return { text: 'limpando a conversa e colando o prompt pronto.' }
-    }
-    if (fase === 'pedido') return { text: 'a passagem já foi pedida; quando o turno acabar, a conversa recomeça.' }
-    fase = 'pedido'
-    $.clock.after(500, () => void pedir($).catch(err => falhou($, err)))
-    return { text: 'vou pedir o estado ao agente; quando ele gravar, a conversa recomeça.' }
-  })
+  on('command.run', { command: 'pass-baton' }, passarAgora)
+  on('command.run', { command: 'licoes:pass-baton' }, passarAgora)
 
   // No meio do turno: o pedido vai junto do resultado da ferramenta, que só o modelo lê. Com o
   // prompt pronto (ESPERAR) e o trabalho de volta, aquele prompt envelheceu: pede outro.
@@ -413,7 +455,7 @@ export const register: Register = on => {
         fase = 'cancelado'
         forcado = false
         await guardar($)
-        $.ui.toast('Passagem cancelada (Esc). Não limpo a conversa; /pass-baton quando quiser', { timeoutMs: 10_000 })
+        $.ui.toast(`Passagem cancelada (Esc). Não limpo a conversa; ${PASSAR} quando quiser`, { timeoutMs: 10_000 })
       }
       return r
     }
@@ -434,7 +476,7 @@ export const register: Register = on => {
     else if (fase === 'livre' && (tokens ?? 0) >= LIMITE && !avisado) {
       avisado = true
       $.ui.toast(
-        `Contexto acima de ${Math.round(LIMITE / 1000)} mil; o próximo trabalho pede a passagem sozinho, ou /pass-baton agora`,
+        `Contexto acima de ${Math.round(LIMITE / 1000)} mil; o próximo trabalho pede a passagem sozinho, ou ${PASSAR} agora`,
         { timeoutMs: 10_000 },
       )
     }

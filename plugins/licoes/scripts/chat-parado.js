@@ -354,7 +354,8 @@ function soOQueUsa(e) {
 }
 
 // Limite do plano em 80% e 95% (ideia do limits.js da Helena, MIT): o número vem da barra de status (modelos/statusline.js),
-// que o grava em limites.json — sem ela (o app de desktop não tem), fica calado. Um aviso por nível, por chat.
+// que o grava em limites.json; no app, que não tem barra, quem grava é o mod passa-bastao (FERRAMENTAS §14). Sem os dois, fica
+// calado. Um aviso por nível, por chat.
 const LIMITES = process.env.LIMITES_ARQ || path.join(os.homedir(), '.claude', 'ganchos', 'limites.json');
 function limite(e) {
   const l = JSON.parse(fs.readFileSync(LIMITES, 'utf8')), agora = Date.now() / 1000;
