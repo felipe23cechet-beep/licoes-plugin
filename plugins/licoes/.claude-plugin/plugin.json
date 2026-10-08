@@ -1,7 +1,7 @@
 {
   "name": "licoes",
   "displayName": "LIÇÕES GERAIS",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação; e os ganchos da base rodam na sua máquina — segredo no commit, chat parado, passagem de bastão, tela e (se ligar) as lições próprias.",
   "author": {
     "name": "LIÇÕES GERAIS"

@@ -10,9 +10,9 @@ claude plugin marketplace add felipe23cechet-beep/licoes-plugin
 claude plugin install licoes@licoes
 ```
 
-E ligue a atualização automática (num marketplace que não é da Anthropic ela vem **desligada**): num chat do Claude Code,
-`/plugin` → aba **Marketplaces** → `licoes` → **Enable auto-update**. A versão nova chega até 10 minutos depois da
-1ª mensagem de um chat e vale no chat seguinte (ou com `/reload-plugins`). Sem isso, atualize na mão:
+A atualização automática vem **ligada**: a versão nova chega até 10 minutos depois da 1ª mensagem de um chat e vale
+no chat seguinte (ou com `/reload-plugins`). Para desligar: `/plugin` → aba **Marketplaces** → `licoes`. Para atualizar
+na hora:
 `claude plugin update licoes@licoes`.
 
 Sem chave, o plugin traz o `economia.js`: quanto o contexto custou nesta máquina, lido dos registros locais.
