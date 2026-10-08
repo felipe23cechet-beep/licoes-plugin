@@ -1,5 +1,5 @@
 ---
-name: desfazer
+name: undo
 description: Desfaz o que a pasta de lições fez sozinha — a skill ‹auto› criada, a última linha aprendida, a poda, a junção, a lição esquecida
 argument-hint: "[<skill> [aprendido|juntar|poda] | licao <nº>]"
 disable-model-invocation: true

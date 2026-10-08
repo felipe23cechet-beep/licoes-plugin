@@ -1,6 +1,6 @@
 ---
-name: esquecer
-description: Tira uma lição errada ou velha das suas lições próprias (ela vai para as esquecidas e volta com /licoes:desfazer licao <nº>)
+name: forget
+description: Tira uma lição errada ou velha das suas lições próprias (ela vai para as esquecidas e volta com /licoes:undo licao <nº>)
 argument-hint: "<nº da lição, ou parte do título>"
 disable-model-invocation: true
 allowed-tools: Bash(node:*), Bash(grep:*)

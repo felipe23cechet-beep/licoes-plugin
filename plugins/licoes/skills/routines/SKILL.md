@@ -1,5 +1,5 @@
 ---
-name: rotinas
+name: routines
 description: Rotinas que rodam sozinhas de tempos em tempos (só leem, com teto de gasto) — listar, criar, tirar, ou rodar uma agora
 argument-hint: "[o que fazer e de quanto em quanto tempo | tirar <nome> | agora <nome>]"
 disable-model-invocation: true

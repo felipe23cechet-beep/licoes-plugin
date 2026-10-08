@@ -1,5 +1,5 @@
 ---
-name: comecar
+name: start
 description: Lê já os chats anteriores deste projeto (os 5 mais novos, ou os N que você disser) e tira as lições deles, em segundo plano
 argument-hint: "[quantos chats, de 1 a 20]"
 disable-model-invocation: true

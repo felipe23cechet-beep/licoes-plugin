@@ -1,5 +1,5 @@
 ---
-name: lembrar
+name: remember
 description: Grava agora uma lição que você dita — o que aconteceu e a regra que fica — nas suas lições próprias
 argument-hint: "<o que aconteceu e o que fazer da próxima vez>"
 disable-model-invocation: true

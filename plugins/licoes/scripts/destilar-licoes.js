@@ -208,7 +208,7 @@ function destilar(transcript, cwd, arqLicoes) {
   registrar(`destilou ${transcript}: ${novas.length} lição(ões), US$ ${custo.toFixed(4)}`);
 }
 
-// grava em cima, com o próximo nº do cabeçalho; devolve o nº da primeira. auto=false: a pessoa ditou (/licoes:lembrar), sem ‹auto›
+// grava em cima, com o próximo nº do cabeçalho; devolve o nº da primeira. auto=false: a pessoa ditou (/licoes:remember), sem ‹auto›
 function gravarNovas(arqLicoes, novas, cwd, auto) {
   const d2 = lerLicoes(arqLicoes); // relê: outra sessão pode ter escrito enquanto o Haiku pensava
   const iCab = d2.L.findIndex(x => /Próximo nº: \d+|Next no\.: \d+/.test(x));
@@ -591,7 +591,7 @@ function arquivoMeu(cwd) {
   if (!process.env.CLAUDE_PLUGIN_ROOT || !/^(true|1|sim)$/i.test(process.env.CLAUDE_PLUGIN_OPTION_DESTILAR || '')) return null;
   return criarMeu(process.env.CLAUDE_PLUGIN_OPTION_PASTA_MEU);
 }
-// os COMANDOS (/licoes:status, :lembrar…) a pessoa chama de propósito, então não pedem a opção "destilar": --licoes › base › --meu.
+// os COMANDOS (/licoes:status, :remember…) a pessoa chama de propósito, então não pedem a opção "destilar": --licoes › base › --meu.
 // No plugin o --meu chega como ${user_config.pasta_meu}; vazio, ou o texto cru "${…}" de opção sem valor, é a pasta padrão
 function arqDoComando(licoes, meu, cwd, criar) {
   if (licoes) return licoes;
@@ -624,7 +624,7 @@ function rodar(transcript, cwd, arqLicoes, inicio) {
 // no plugin, /licoes:status; na base, a skill licoes-status. Pelo lugar do script: o comando `!` de uma skill não recebe CLAUDE_PLUGIN_ROOT no ambiente (provado 07/10)
 const NO_PLUGIN = () => !!process.env.CLAUDE_PLUGIN_ROOT || fs.existsSync(path.join(__dirname, '..', '.claude-plugin', 'plugin.json'));
 const CMD = n => (NO_PLUGIN() ? '/licoes:' : '/licoes-') + n;
-// ---------- os comandos que a pessoa chama (/licoes:status, :lembrar, :comecar — os /helena:status, :remember, :start) ----------
+// ---------- os comandos que a pessoa chama (/licoes:status, :remember, :start — os mesmos nomes da Helena) ----------
 const lerLog = arq => { try { return fs.readFileSync(arq, 'utf8').split('\n').map(l => ({ t: Date.parse(l.slice(0, 24)), m: l.slice(25) })).filter(x => x.t); } catch { return []; } };
 const dirRotinas = () => process.env.ROTINAS_ESTADO || path.join(os.homedir(), '.claude', 'ganchos', 'rotinas');
 const custoMedio = () => { const c = lerLog(path.join(ESTADO, 'registro.log')).map(x => (x.m.match(/^destilou .*US\$ ([\d.]+)/) || [])[1]).filter(Boolean).map(Number);
@@ -651,7 +651,7 @@ function status(arq) {
   if (erros) out.push(`⚠️ ${erros} erro(s) em 7 dias — ${path.join(ESTADO, 'registro.log')}`);
   const nov = lerJSON(path.join(ESTADO, 'novidades.json'), []);
   if (nov.length) out.push('Novidades que o próximo chat vai contar:', ...nov.map(n => `- ${n}`));
-  out.push('Desfazer o que rodou sozinho: ' + CMD('desfazer'));
+  out.push('Desfazer o que rodou sozinho: ' + CMD('undo'));
   console.log(out.join('\n'));
 }
 
@@ -679,7 +679,7 @@ function lembrar(arq, entrada, cwd) {
   if (igual) return nao(`Já existe a lição nº ${igual.nr} com esse título — edite aquela em ${arq}.`);
   const nr = gravarNovas(arq, [x], cwd, false);
   registrar(`lembrou: nº ${nr}: ${String(x.titulo).replace(/\s+/g, ' ').trim()}`);
-  console.log(`Lição nº ${nr} gravada em ${arq}. Tirar: ${CMD('esquecer')} ${nr}`);
+  console.log(`Lição nº ${nr} gravada em ${arq}. Tirar: ${CMD('forget')} ${nr}`);
 }
 
 // COMEÇAR: os N chats mais novos DESTE projeto, lidos já (a instalação da Helena resume as últimas 10 sessões) — o
