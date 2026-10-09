@@ -1,6 +1,6 @@
 {
   "modules": [
-    "./passa-bastao.ts"
+    "./licoes.ts"
   ],
   "hooks": {
     "SessionStart": [

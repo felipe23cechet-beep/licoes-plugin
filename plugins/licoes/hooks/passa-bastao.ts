@@ -51,6 +51,8 @@ const ARQUIVO = '.passa-bastao.md'
 // só apareciam depois da primeira mensagem, e o dono procurou por /licoes:).
 const REGISTRAR = false
 const PASSAR = '/licoes:pass-baton'
+// Comandos de outro mod no mesmo plugin (o plugin aceita um módulo e um session.start): registrados no session.start daqui.
+export const outrosComandos: Parameters<EngineInterface['command']['register']>[0][] = []
 
 const pedido = (motivo: string) => [
   `[passa-bastão] ${motivo} Isto NÃO é motivo para parar: é a troca de chat, e o trabalho segue no chat novo. Grave a passagem em NO MÁXIMO 3 chamadas de ferramenta, sem reler nada (o que precisa já está na conversa):`,
@@ -370,6 +372,7 @@ export const register: Register = on => {
       })
       await $.command.register({ name: 'panel', description: 'Painel do passa-bastão: contexto até o limite, cache e passagem' })
     }
+    for (const c of outrosComandos) await $.command.register(c)
     // Os limites do plano na barra desde o começo: o motor só os mede depois da primeira resposta.
     await lerLimites($).catch(() => {})
     // A cada 30 s: o contexto (no meio de um turno longo, o fim do turno demora) e os limites que outra sessão gravou.
