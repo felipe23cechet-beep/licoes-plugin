@@ -1,59 +1,13 @@
 import type { EngineInterface, Register, RenderElement } from 'claude-code'
 import type { PassaBastaoPainel } from '../types'
 
-// Passa-bastão (base LIÇÕES GERAIS, FERRAMENTAS §14): em vez do autocompact, um chat novo que recomeça do arquivo de estado.
-// 1) Barra de status: minutos que restam do cache (1 h) e o tamanho do contexto.
-// 2) Ao passar de LIMITE tokens NO MEIO do turno, pede ao agente que grave o estado e o prompt de
-//    retomada em ARQUIVO, junto do resultado de uma ferramenta (um turno longo passa de 150 a 167 mil
-//    sem parar, e a compactação automática chegava primeiro). Quando o turno acaba, a 1ª linha do
-//    arquivo decide: CONTINUAR (ou sem marca) limpa a conversa (/clear) e cola o prompt; ESPERAR
-//    (o próximo passo só depende da pessoa, ou a lista acabou) NÃO limpa: avisa, e /pass-baton cola.
-//    Exceção de 03/10/2026: o /clear escondeu a resposta final e o chat novo seguiu sem o sim do dono.
-//    O pedido não é parada (05/10/2026): "algo para ler" valia ESPERAR, e o agente parou com a lista pela metade.
-// 3) Turno que acaba sozinho acima do limite, sem pedido: só avisa, uma vez.
-// 4) /pass-baton: com o prompt pronto, cola na hora; sem ele, pede, e ao fim do turno limpa sempre.
-//    Se o arquivo não vier, não limpa nada.
-// 5) Esc no meio da passagem cancela: não limpa, e só pede de novo depois de o contexto baixar ou pelo /pass-baton.
-// 6) Mensagem nova da pessoa entre o fim do turno e a limpeza cancela a limpeza (04/10/2026: o /clear ficou na fila
-//    atrás da mensagem, rodou 8 min depois, apagou a resposta final e colou um prompt velho).
-// 8) O estado do mod se perde (uma recarga zera as variáveis e cancela os timers): o fim do turno confere o arquivo
-//    mesmo assim — gravado neste turno e não USADO, vale o que ele diz (06/10/2026: o agente gravou CONTINUAR e o chat
-//    ficou parado, sem limpar nem avisar). E a passagem que falha avisa, em vez de calar. Mas nunca o que foi gravado
-//    antes de ESTE chat começar (08/10/2026: carregado no meio do turno, o mod colou o prompt do chat anterior depois da
-//    resposta de parada, e o chat seguiu trabalhando contra a vontade do dono).
-// 7) /pass-baton num chat sem conversa não pede estado: cola o prompt que o chat anterior deixou pronto, ou diz que
-//    não há o que passar (04/10/2026: pedia "o contexto chegou ao limite" num chat vazio).
-// 10) O relato não se perde (07/10/2026): com CONTINUAR a resposta final some com o /clear e o dono não lê o prompt colado;
-//     a triagem inteira de um repositório e as perguntas dele sumiram assim. O prompt leva a seção O QUE JÁ FOI FEITO, UMA lista fundida de troca em troca (sem bloco por chat),
-//     e ela só se entrega quando o trabalho PARA de vez — no resumo final do turno que espera o dono. Nunca no começo de
-//     um chat depois do /clear (correção do dono, 07/10/2026: "aí eu não vou ler nada").
-// 9) O arquivo se procura na RAIZ do projeto, não na pasta em que a sessão está: um `cd` do agente no terminal muda a
-//    pasta da sessão, e o arquivo gravado na raiz ficava invisível (06/10/2026, duas vezes: o mod procurou na pasta da
-//    base, aberta por `cd`, e esperou calado). Vale o mais novo das duas pastas.
-// 11) E a RAIZ também muda: no app, o `cd` do agente leva junto a pasta principal da sessão (07/10/2026, terceira vez:
-//     raiz e pasta foram as duas para a pasta do mod, e o arquivo gravado no projeto ficou invisível). O mod guarda
-//     toda pasta que a sessão já teve, em `$.state` (que sobrevive à recarga), e procura em todas.
-// 12) A recarga logo DEPOIS do fim do turno (o agente editou um arquivo do mod no turno: a recarga espera o fim dele)
-//     cancelava o relógio de 1,5 s do `passar`, e a passagem com CONTINUAR se perdia (07/10/2026 21:31). A passagem em
-//     curso mora em `$.state`; o session.start da recarga a devolve às variáveis e, se o `passar` estava marcado, o marca de novo.
-// 13) /panel: a faixa do contexto até o limite e o que o ocupa, com quanto um chat novo nasceria, o cache, os limites
-//     do plano (5 h e semana) e quando zeram, o custo do chat e a passagem em curso. Grava o limites.json (o app não tem barra).
-
-// Bem abaixo da compactação: com este mod os projetos gravam autoCompactWindow de 250 mil (compacta em ~210 mil), porque
-// um só resultado de ferramenta soma até ~30 mil e, na janela de 200 mil (~167 mil), passava o pedido e a compactação juntos.
-// PASSA_BASTAO_LIMITE muda o número (para testar com pouco contexto).
 let LIMITE = 150_000
 const CACHE_MS = 60 * 60 * 1000
 const ARQUIVO = '.passa-bastao.md'
-// Solto (CLAUDE_CODE_PLUGIN_DIRS), o mod registra /pass-baton e /panel ao abrir a sessão. Dentro do plugin licoes, o
-// /pass-baton é a skill /licoes:pass-baton, que aparece no menu antes da sessão abrir e que este mod responde sem chamar o
-// modelo; o montar-plugin troca as duas linhas abaixo (08/10/2026: no app, os comandos registrados só apareciam depois da
-// primeira mensagem, e o dono procurou por /licoes:). O /panel é registrado nos dois, imediato: digitado com o Claude
-// trabalhando, roda na hora (09/10/2026: a skill /licoes:panel esperava o turno acabar; skill de plugin não aceita
-// `immediate`, e nome de comando registrado não aceita ':').
+
 const REGISTRAR = false
 const PASSAR = '/licoes:pass-baton'
-// Comandos de outro mod no mesmo plugin (o plugin aceita um módulo e um session.start): registrados no session.start daqui.
+
 export const outrosComandos: Parameters<EngineInterface['command']['register']>[0][] = []
 
 const pedido = (motivo: string) => [
@@ -67,35 +21,31 @@ const pedido = (motivo: string) => [
 const PEDIDO = pedido('O contexto chegou ao limite de passagem.')
 const PEDIDO_DA_PESSOA = pedido(`A pessoa pediu a passagem para um chat novo (${PASSAR}).`)
 
-// livre → pedido → (CONTINUAR) limpa e volta a livre · (ESPERAR) pronto, até a pessoa pedir ou o trabalho voltar.
 let fase: 'livre' | 'pedido' | 'pronto' | 'falhou' | 'cancelado' = 'livre'
 let pedidoEm = 0
-// A pessoa pediu (/pass-baton): limpa mesmo com ESPERAR.
+
 let forcado = false
-// O aviso do turno que acabou sozinho acima do limite já saiu.
+
 let avisado = false
-// Turnos que acabaram depois do pedido sem o arquivo: outro turno (um sub-agente que volta, uma
-// mensagem na fila) pode acabar antes do que atende o pedido. Só desiste no segundo.
+
 let semArquivo = 0
 let ultimoFim = 0
-// Um turno principal está rodando: cada chamada ao modelo renova o cache, então ele está em uso.
+
 let emTurno = false
-// Quando os limites que a barra mostra foram medidos (por esta sessão ou, no limites.json, por outra).
+
 let limitesEm = 0
 let tokens: number | undefined
-// Turnos principais iniciados: se mudou entre o fim do turno e a limpeza, a pessoa voltou a conversar.
+
 let iniciados = 0
-// Este chat já teve conversa (zera no /clear).
+
 let conversou = false
-// Quando o turno principal em curso começou (0 = desconhecido, depois de uma recarga).
+
 let comecouEm = 0
-// Sem o início do turno, o arquivo vale se for desta meia hora.
+
 const JANELA_MS = 30 * 60_000
 
-// O fim do turno marcou o `passar` e ele ainda não pegou o arquivo.
 let agendado = false
 
-// Os tipos de `pastas` e `passagem` moram no contrato do mod, types/index.d.ts.
 const PASTAS = { plugin: 'licoes', key: 'pastas' } as const
 const PASSAGEM = { plugin: 'licoes', key: 'passagem' } as const
 const PAINEL = { plugin: 'licoes', key: 'painel' } as const
@@ -105,13 +55,11 @@ const mil = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)} mil` : `${Math.
 const guardar = ($: EngineInterface) =>
   $.state.set(PASSAGEM, { fase, pedidoEm, forcado, comecouEm, conversou, agendado }).catch(() => {})
 
-// O fim do turno marca o `passar` fora do dispatch: o /clear e o prompt novo só rodam com a sessão parada.
 function agendar($: EngineInterface, turno: number) {
   agendado = true
   $.clock.after(1500, () => void passar($, turno).catch(err => falhou($, err)))
 }
 
-// Toda pasta que a sessão já teve (raiz e pasta atual), a de agora primeiro. Guarda as novas.
 async function pastasVistas($: EngineInterface) {
   const agora = [await $.session.root().catch(() => ''), await $.session.cwd().catch(() => '')].filter(Boolean)
   const vistas: string[] = (await $.state.get(PASTAS).catch(() => undefined))?.value ?? []
@@ -131,15 +79,13 @@ function falhou($: EngineInterface, erro: unknown) {
   })
 }
 
-// O prompt gravado durante este turno e ainda não colado, se houver.
 async function arquivoDoTurno($: EngineInterface) {
   const desde = comecouEm || (await $.clock.now()) - JANELA_MS
   return lerArquivo($, desde)
 }
 
-// O que o motor mede de graça (limites do plano, custo, divisão do contexto), para o /panel. Muda no fim do turno.
 let medida: Pick<PassaBastaoPainel, 'limites' | 'custo' | 'partes' | 'chatNovo' | 'memoria'> = {}
-// As linhas do /context, traduzidas; a que falta aparece como o motor a chama.
+
 const NOMES: Record<string, string> = {
   Messages: 'conversa',
   'System prompt': 'prompt do sistema',
@@ -151,8 +97,6 @@ const NOMES: Record<string, string> = {
   'Slash commands': 'comandos',
 }
 
-// `summary` estima sem chamar a API: não custa nada. No app não há barra de status, então quem grava o
-// limites.json (de onde o gancho chat-parado avisa em 80% e 95%) é este mod, no formato da statusline.js.
 async function medir($: EngineInterface) {
   const u = await $.session.usage({ breakdown: 'summary' })
   medida = { ...medida, custo: u.cost?.usd ?? null }
@@ -171,7 +115,6 @@ async function medir($: EngineInterface) {
   }
 }
 
-// Os limites que o motor acabou de medir: na barra e no limites.json. Sem plano, nada se grava fora do projeto.
 async function guardarLimites($: EngineInterface, medidos: { kind: string; percentUsed: number; resetsAt?: string | null }[]) {
   const limites = medidos.map(l => ({
     janela: l.kind,
@@ -188,8 +131,6 @@ async function guardarLimites($: EngineInterface, medidos: { kind: string; perce
   await $.fs.write(`${home.replaceAll('\\', '/')}/.claude/ganchos/limites.json`, JSON.stringify(arq)).catch(() => {})
 }
 
-// O limites.json, quando outra sessão o gravou depois da última medida desta: a barra não nasce sem os limites
-// nem fica parada no número velho enquanto outro chat gasta (08/10/2026).
 async function lerLimites($: EngineInterface) {
   const home = (await $.env.get('USERPROFILE').catch(() => undefined)) || (await $.env.get('HOME').catch(() => undefined))
   if (!home) return
@@ -204,7 +145,6 @@ async function lerLimites($: EngineInterface) {
   if (limites.length) (medida = { ...medida, limites }), (limitesEm = arq.gravado)
 }
 
-// Na barra: 5 h e semana, com o que já zerou desde a medida mostrado como 0%.
 const JANELAS_CURTAS: Record<string, string> = { five_hour: '5h', seven_day: 'sem' }
 function limitesNaBarra(agora: number) {
   return (medida.limites ?? [])
@@ -214,10 +154,9 @@ function limitesNaBarra(agora: number) {
 
 async function mostrar($: EngineInterface) {
   const agora = await $.clock.now()
-  // O painel se redesenha quando isto muda.
+
   void $.state.set(PAINEL, { tokens: tokens ?? null, ultimoFim, emTurno, agora, limite: LIMITE, ...medida }).catch(() => {})
-  // Curta: a faixa do app corta em ~40 caracteres depois do nome do plugin (print do dono, 08/10/2026).
-  // A ordem é a da urgência; o que se corta primeiro é a semana. O /panel diz por extenso.
+
   const k = `ctx ${tokens === undefined ? '?' : `${Math.round(tokens / 1000)}k`}`
   const resta = Math.ceil((CACHE_MS - (agora - ultimoFim)) / 60_000)
   const partes = emTurno
@@ -246,8 +185,6 @@ async function pedir($: EngineInterface) {
   void $.prompt.submit({ text: PEDIDO_DA_PESSOA }).catch(err => falhou($, err))
 }
 
-// O prompt gravado depois de `desde`, sem a linha da marca. Sem marca vale CONTINUAR; USADO já foi colado.
-// Só o deste chat (o /clear recomeça a conta), salvo `doAnterior`: o /pass-baton num chat vazio.
 async function lerArquivo($: EngineInterface, desde = pedidoEm, doAnterior = false) {
   if (!doAnterior) desde = Math.max(desde, (await $.session.usage()).startedAt ?? 0)
   const pastas = await pastasVistas($)
@@ -267,11 +204,9 @@ async function lerArquivo($: EngineInterface, desde = pedidoEm, doAnterior = fal
   return texto ? { esperar: marca === 'ESPERAR', texto, caminho } : undefined
 }
 
-// Colado uma vez: um /pass-baton num chat vazio, depois, não cola o mesmo prompt de novo.
 const marcarUsado = ($: EngineInterface, arq: { texto: string; caminho: string }) =>
   $.fs.write(arq.caminho, `USADO\n${arq.texto}\n`).catch(() => {})
 
-// A pessoa mandou mensagem depois do fim do turno: a conversa seguiu, e a limpeza apagaria a resposta.
 function desistir($: EngineInterface) {
   fase = 'livre'
   forcado = false
@@ -287,9 +222,9 @@ async function passar($: EngineInterface, turno: number, tentou = false) {
   if (iniciados !== turno) return desistir($)
   const arq = await lerArquivo($)
   if (iniciados !== turno) return desistir($)
-  // A gravação pode chegar um pouco depois do fim do turno (disco na nuvem): olha de novo antes de contar o turno.
+
   if (!arq && !tentou) return void $.clock.after(3_000, () => void passar($, turno, true).catch(err => falhou($, err)))
-  // Daqui em diante o `passar` decidiu: uma recarga não o marca de novo (nunca dois /clear).
+
   agendado = false
   if (!arq) {
     if (++semArquivo < 2) return void guardar($)
@@ -303,7 +238,7 @@ async function passar($: EngineInterface, turno: number, tentou = false) {
   if (arq.esperar && !forcado) {
     fase = 'pronto'
     void guardar($)
-    // Sem aviso (07/10/2026): o prompt já vem na resposta, e a pessoa o cola num chat novo — não digita o comando.
+
     void mostrar($).catch(() => {})
     return
   }
@@ -319,7 +254,6 @@ async function passar($: EngineInterface, turno: number, tentou = false) {
   await $.prompt.submit({ text: arq.texto, asUser: true })
 }
 
-// /panel.
 async function painel($: EngineInterface) {
   await medir($).catch(() => {})
   await mostrar($).catch(() => {})
@@ -327,9 +261,8 @@ async function painel($: EngineInterface) {
   return { text: 'painel aberto.' }
 }
 
-// Pedido pela pessoa: limpa sempre. Com o prompt já pronto, cola na hora, sem pedir de novo.
 async function passarAgora($: EngineInterface) {
-  // Chat sem conversa: não há estado a gravar. Cola o prompt que o chat anterior deixou, se houver.
+
   if (!conversou && fase !== 'pronto' && fase !== 'pedido') {
     const arq = await lerArquivo($, 0, true)
     if (!arq) return { text: `este chat ainda não tem conversa, e não há prompt pronto em ${ARQUIVO}. Nada a passar.` }
@@ -338,7 +271,7 @@ async function passarAgora($: EngineInterface) {
     return { text: 'colando o prompt que o chat anterior deixou pronto.' }
   }
   forcado = true
-  // Passagem que falhou com o prompt já gravado: cola esse, sem pedir de novo.
+
   if (fase === 'falhou' && (await arquivoDoTurno($))) fase = 'pronto'
   if (fase === 'pronto') {
     fase = 'pedido'
@@ -358,7 +291,7 @@ export const register: Register = on => {
     const n = Number(await $.env.get('PASSA_BASTAO_LIMITE').catch(() => undefined))
     if (n > 0) LIMITE = n
     await pastasVistas($)
-    // Recarga: a passagem em curso volta às variáveis; com o `passar` marcado e cancelado, marca de novo (uma vez).
+
     const salvo = (await $.state.get(PASSAGEM).catch(() => undefined))?.value
     if (salvo) {
       ;({ fase, pedidoEm, forcado, comecouEm, conversou } = salvo)
@@ -373,17 +306,16 @@ export const register: Register = on => {
     ]
     if (REGISTRAR)
       comandos.unshift({ name: 'pass-baton', description: 'Grava o estado, limpa a conversa e recomeça num chat novo (passa-bastão)' })
-    // Um registro recusado (nome em uso, nome inválido) faria o motor pular o session.start inteiro: cada um se protege.
+
     for (const c of comandos) await $.command.register(c).catch(err => $.ui.log(`/${c.name} não registrado: ${err}`, { to: 'debug' }))
-    // Os limites do plano na barra desde o começo: o motor só os mede depois da primeira resposta.
+
     await lerLimites($).catch(() => {})
-    // A cada 30 s: o contexto (no meio de um turno longo, o fim do turno demora) e os limites que outra sessão gravou.
+
     $.clock.every(30_000, () => void atualizar($).catch(() => {}))
     void mostrar($).catch(() => {})
     return next(e)
   })
 
-  // O motor avisa quando um limite andou um ponto (a cada resposta, também no meio do turno) e no fim de cada turno.
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) await guardarLimites($, e.rateLimits).catch(() => {})
     if (typeof e.context.tokens === 'number') tokens = e.context.tokens
@@ -447,8 +379,6 @@ export const register: Register = on => {
   on('command.run', { command: 'pass-baton' }, passarAgora)
   on('command.run', { command: 'licoes:pass-baton' }, passarAgora)
 
-  // No meio do turno: o pedido vai junto do resultado da ferramenta, que só o modelo lê. Com o
-  // prompt pronto (ESPERAR) e o trabalho de volta, aquele prompt envelheceu: pede outro.
   on('tool.call', async ($, e, next) => {
     const r = await next(e)
     if (e.agentId || (fase !== 'livre' && fase !== 'pronto') || 'deny' in r) return r
@@ -463,7 +393,6 @@ export const register: Register = on => {
     return { ...r, context: [...(r.context ?? []), PEDIDO] }
   })
 
-  // Um /clear (da pessoa ou deste mod) começa um chat sem conversa.
   on('command.run', async ($, e, next) => {
     const r = await next(e)
     if (e.command === 'clear') (conversou = false), void guardar($)
@@ -477,7 +406,7 @@ export const register: Register = on => {
     comecouEm = await $.clock.now()
     await pastasVistas($).catch(() => {})
     conversou = true
-    // A conversa seguiu: um `passar` marcado antes de uma recarga não volta (o `passar` vivo desiste sozinho).
+
     agendado = false
     await guardar($)
     return next(e)
@@ -491,7 +420,7 @@ export const register: Register = on => {
     ultimoFim = await $.clock.now()
     tokens = (await $.session.usage()).context.tokens
     void medir($).then(() => mostrar($)).catch(() => {})
-    // Esc no meio da passagem: a pessoa quer o chat como está. Não limpa nem pede de novo neste contexto.
+
     if (e.isAborted) {
       if (fase === 'pedido') {
         fase = 'cancelado'
@@ -501,20 +430,20 @@ export const register: Register = on => {
       }
       return r
     }
-    // Depois de uma compactação o contexto volta a caber: a passagem pode ser pedida de novo.
+
     if ((tokens ?? 0) < LIMITE) {
       avisado = false
       if (fase === 'falhou' || fase === 'cancelado') fase = 'livre'
     }
     if (fase === 'pedido') agendar($, iniciados)
-    // O pedido se perdeu (recarga) mas o arquivo deste turno está lá: segue o que ele diz.
+
     else if (fase === 'livre' && (tokens ?? 0) >= LIMITE && (await arquivoDoTurno($))) {
       fase = 'pedido'
       pedidoEm = comecouEm || (await $.clock.now()) - JANELA_MS
       semArquivo = 0
       agendar($, iniciados)
     }
-    // Acabou sozinho acima do limite: a última mensagem é para a pessoa. Não pede nem limpa; avisa uma vez.
+
     else if (fase === 'livre' && (tokens ?? 0) >= LIMITE && !avisado) {
       avisado = true
       $.ui.toast(

@@ -1,11 +1,3 @@
-// Confere uma página como o checklist de tela manda MEDIR, sem olho: contraste de cada texto visível (WCAG AA) a 1440 e
-// a 375 px, e o vazamento lateral no celular (scrollWidth > clientWidth, `meu/` nº 58 da base, linha "Celular (375px)").
-//   node confere-tela.mjs <arquivo.html | http://localhost:PORTA/caminho>
-// Sai 1 e lista cada problema (elemento, cor, fundo, razão, mínimo); 0 se tudo passa; 2 se não deu para conferir.
-// Usa o Edge ou o Chrome que já estão na máquina, pelo playwright-core (Apache-2.0) — não baixa navegador.
-// Adaptado do tools/contrast.mjs do vijcoelho/project-helena (MIT, commit c356888, CREDITOS.md da base). Mudanças daqui:
-// 375 px (a largura do checklist) no lugar de 390; o vazamento lateral; e texto sobre imagem ou degradê sai na lista
-// "não deu para medir" em vez de sumir calado.
 import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -14,8 +6,6 @@ import { createRequire } from 'node:module';
 const alvo = process.argv[2];
 if (!alvo) { console.error('uso: node confere-tela.mjs <arquivo.html | url>'); process.exit(2); }
 
-// o playwright-core: ao lado (npm install nesta pasta) ou, no PLUGIN, no CLAUDE_PLUGIN_DATA (sobrevive à atualização).
-// Sem ele, sai 2 ("não deu para conferir"): o import fixo saía 1, e o tela-no-fim lia "achou problema" (07/10/2026)
 let chromium;
 for (const de of [import.meta.url, process.env.CLAUDE_PLUGIN_DATA && pathToFileURL(resolve(process.env.CLAUDE_PLUGIN_DATA, 'package.json')).href]) {
   if (!de) continue;
@@ -35,7 +25,7 @@ try {
   for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 }]) {
     const pag = await nav.newPage({ viewport });
     await pag.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
-    await pag.waitForTimeout(800);                                      // animação de entrada terminar
+    await pag.waitForTimeout(800);
     const r = await pag.evaluate(() => {
       const rgba = s => { const m = s.match(/[\d.]+/g) || [0, 0, 0, 0]; return [+m[0], +m[1], +m[2], m[3] === undefined ? 1 : +m[3]]; };
       const lum = ([r, g, b]) => { const c = [r, g, b].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
@@ -44,7 +34,7 @@ try {
         const camadas = [];
         for (let e = el; e; e = e.parentElement) {
           const cs = getComputedStyle(e);
-          if (cs.backgroundImage !== 'none') return null;                // imagem ou degradê: não dá para medir assim
+          if (cs.backgroundImage !== 'none') return null;
           const c = rgba(cs.backgroundColor);
           if (c[3] > 0) { camadas.push(c); if (c[3] === 1) break; }
         }

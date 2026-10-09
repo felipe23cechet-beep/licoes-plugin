@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-// FIM DO CHAT ANTERIOR — lê só o FIM do registro de uma conversa deste projeto (base LIÇÕES GERAIS, 09 §9.15).
-//
-// Para quando o chat parou no meio — o limite acabou, a pessoa fechou — sem deixar prompt de retomada.
-// O chat NOVO roda isto e vê onde a conversa parou, sem mandar "continue" no chat velho (que releria tudo).
-// Só lê o disco: não muda nada, não usa internet. Sai em ~4 mil tokens (medido: 7,8 mil caracteres = ~3,8 mil).
-//
-// Uso:  node fim-do-chat.js                    → a conversa mais recente deste projeto, fora a atual
-//       node fim-do-chat.js <id ou .jsonl>     → uma conversa específica
-//       node fim-do-chat.js --lista            → as últimas 8 conversas, com data e tamanho
-// Opções: --pasta "<pasta do projeto>" (padrão: a pasta atual) · --n 8 (quantas mensagens suas mostrar)
 
 const fs = require('fs'), path = require('path'), os = require('os');
 
@@ -34,17 +24,17 @@ function escolher() {
   if (ALVO && fs.existsSync(ALVO)) return ALVO;
   const todas = conversas();
   if (ALVO) { const c = todas.find(c => c.id.startsWith(ALVO)); if (c) return c.arq; console.log('Conversa não encontrada: ' + ALVO); process.exit(1); }
-  const atual = process.env.CLAUDE_CODE_SESSION_ID;                    // o próprio chat que roda isto fica de fora
+  const atual = process.env.CLAUDE_CODE_SESSION_ID;
   const c = todas.find(c => c.id !== atual);
   if (!c) { console.log('Não há conversa anterior neste projeto.'); process.exit(1); }
   return c.arq;
 }
 
 function fimDoArquivo(arq) {
-  // só o fim: o registro de uma sessão longa passa de 50 MB
+
   const fd = fs.openSync(arq, 'r'), tam = fs.fstatSync(fd).size, n = Math.min(tam, 3 << 20);
   const buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, tam - n); fs.closeSync(fd);
-  const linhas = buf.toString('utf8').split('\n'); if (n < tam) linhas.shift();   // a primeira pode vir cortada
+  const linhas = buf.toString('utf8').split('\n'); if (n < tam) linhas.shift();
   return linhas.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(o => o && !o.isSidechain);
 }
 
@@ -83,20 +73,20 @@ function eventos(regs) {
 function mostrar(arq) {
   const { ev, contexto } = eventos(fimDoArquivo(arq));
   if (!ev.length) { console.log('Nada legível no fim deste registro.'); return; }
-  // começa N mensagens suas antes do fim
+
   let ini = 0;
   for (let i = ev.length - 1, vistas = 0; i >= 0; i--) if (ev[i].tipo === 'voce' && ++vistas === N) { ini = i; break; }
   const trecho = ev.slice(ini), ultimoClaude = trecho.map(e => e.tipo).lastIndexOf('claude');
   const saida = [];
   for (let i = 0; i < trecho.length; i++) {
     const e = trecho[i];
-    if (e.tipo === 'acao') {                                         // ações seguidas viram uma linha só
+    if (e.tipo === 'acao') {
       const grupo = [e.txt]; while (trecho[i + 1] && trecho[i + 1].tipo === 'acao') grupo.push(trecho[++i].txt);
       const vistos = [...new Set(grupo)];
       saida.push(`   · ${grupo.length} ação(ões): ${vistos.slice(0, 3).map(v => v.slice(0, 45)).join(' · ')}${vistos.length > 3 ? ' · …' : ''}`);
     } else if (e.tipo === 'voce') saida.push(`\n[${hora(e.t)}] VOCÊ: ${corta(e.txt, 700)}`);
     else if (e.tipo === 'nota') saida.push(`   ${corta(e.txt, 200)}`);
-    else if (i === ultimoClaude) {                                   // a última resposta: começo e fim, onde mora o prompt de retomada
+    else if (i === ultimoClaude) {
       const t = e.txt.trim();
       saida.push(`[${hora(e.t)}] CLAUDE (última resposta): ${t.length > 2400 ? corta(t.slice(0, 700), 700) + '\n   […]\n' + t.slice(-1400) : t}`);
     } else saida.push(`[${hora(e.t)}] CLAUDE: ${corta(e.txt, 300)}`);

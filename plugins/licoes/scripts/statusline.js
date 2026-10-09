@@ -1,15 +1,8 @@
-// Barra de status da pasta de lições: o tamanho do contexto (relido a cada mensagem), o limite de uso do plano e o modelo.
-// O Claude Code roda isto depois de cada mensagem, com o JSON da sessão na entrada (doc oficial "Customize your status line").
-// Grava os limites em ~/.claude/ganchos/limites.json: é dali que o gancho chat-parado avisa em 80% e 95%.
-// Só existe no TERMINAL: o app de desktop não mostra barra de status (a faixa do mod passa-bastao faz o papel lá).
-// Ideia da statusline da Helena (vijcoelho/project-helena, MIT), refeita com os campos oficiais. FERRAMENTAS §19.
-// Uso no ~/.claude/settings.json: "statusLine": {"type": "command", "command": "node ~/.claude/ganchos/statusline.js"}
 const fs = require('fs'), path = require('path'), os = require('os');
-const LINGUA = 'pt';                 // 'pt' ou 'en' — o agente acerta ao copiar, pelo idioma da pessoa
-const CHAT_NOVO = 150000;            // a partir daqui, sugere chat novo (FERRAMENTAS §14, "Por que 150 mil")
+const LINGUA = 'pt';
+const CHAT_NOVO = 150000;
 const ARQ = process.env.LIMITES_ARQ || path.join(os.homedir(), '.claude', 'ganchos', 'limites.json');
 
-// { janela: % } das janelas que ainda não zeraram; o Claude Code já tira as vencidas, isto é só por garantia
 function limites(r) {
   const agora = Date.now() / 1000, saida = {};
   for (const [nome, j] of Object.entries(r || {}))

@@ -1,54 +1,29 @@
 #!/usr/bin/env node
-// Guarda de SEGREDO no commit — gancho PreToolUse do Claude Code (base LIÇÕES GERAIS, FERRAMENTAS §16).
-//
-// Antes de `git commit` ou `git push` rodado pelo agente, olha o que vai subir e NEGA o comando se achar chave
-// (Stripe, Google, GitHub, OpenAI/Anthropic, Resend, AWS, Slack, Telegram, chave privada, segredo de webhook,
-// service_role do Supabase, hex longo com nome de chave ao lado) ou arquivo de segredo (`.env`, `.env.local`,
-// `.dev.vars`; os `.example`/`.sample`/`.template` passam). Sem modelo, sem internet: regex + git, milissegundos.
-// Olha SÓ as linhas que ENTRAM (o diff), não o arquivo inteiro: chave antiga já commitada não barra o commit novo.
-// O que entra: o que já está no stage + o `git add` do MESMO comando (ainda não rodou) + `commit -a`; no push, as
-// linhas acrescentadas pelos commits que ainda não subiram.
-// Falso positivo (hash de teste, chave pública de exemplo)? Ponha `segredo-ok` num comentário na MESMA linha — e diga
-// à pessoa. O motivo da negação mostra só os 6 primeiros caracteres do que achou.
-// Ideia e a maior parte do regex: guard.js do vijcoelho/project-helena (MIT, commit c356888, CREDITOS.md). Mudanças
-// daqui, provadas no --teste: o push olhava `git log -p` inteiro e o hash de 40 caracteres de TODO commit casava com o
-// regex de hex — negava todo push com commit novo (06/10/2026); hex longo só conta com nome de chave na linha; lockfile
-// não se lê; `.dev.vars` (Cloudflare) entrou; a escapatória `segredo-ok` é nossa.
-// E as REGRAS DE GIT DO PROJETO, que mudam de projeto para projeto, no `.claude/regras-git` da raiz do repositório
-// (combinadas com a pessoa; uma por linha): `main: não` nega commit direto na main/master (merge e push seguem livres);
-// `nunca: *.mp4 videos/` deixa esses caminhos fora de todo commit (sem barra, casa o nome em qualquer pasta, como no
-// .gitignore). Aceita também `main: no` e `never:`. Ideia: o `.helena/git` do mesmo guard.js (07/10/2026).
-//
-// Ligar: ~/.claude/settings.json → hooks.PreToolUse, matcher "Bash|PowerShell", command "node <caminho>/segredo-no-commit.js".
-// Testar sem ligar nada:  node segredo-no-commit.js --teste   (monta repositórios de mentira numa pasta temporária)
 
 'use strict';
-// sem require(): o lint dos projetos Next (@typescript-eslint/no-require-imports) barra, se o arquivo cair dentro de um
+
 const fs = process.getBuiltinModule('fs'), path = process.getBuiltinModule('path'),
   os = process.getBuiltinModule('os'), cp = process.getBuiltinModule('child_process');
 
-// Exportado em espírito: a mesma lista serve para MASCARAR segredo antes de gravar resumo em disco (passa-bastão).
 const SEGREDO = new RegExp([
-  String.raw`\bsk[_-](live_|test_|ant-|proj-)?[A-Za-z0-9_-]{16,}`,      // Stripe secret, OpenAI, Anthropic
-  String.raw`\b(pk|rk)_(live|test)_[A-Za-z0-9]{10,}`,                   // Stripe publicável/restrita
-  String.raw`\bwhsec_[A-Za-z0-9]{20,}`,                                  // segredo de webhook (Stripe e outros)
-  String.raw`\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}`,                     // Resend
-  String.raw`\bAIza[0-9A-Za-z_-]{30,}`,                                  // Google
+  String.raw`\bsk[_-](live_|test_|ant-|proj-)?[A-Za-z0-9_-]{16,}`,
+  String.raw`\b(pk|rk)_(live|test)_[A-Za-z0-9]{10,}`,
+  String.raw`\bwhsec_[A-Za-z0-9]{20,}`,
+  String.raw`\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}`,
+  String.raw`\bAIza[0-9A-Za-z_-]{30,}`,
   String.raw`\bgh[pousr]_[A-Za-z0-9]{30,}`, String.raw`\bgithub_pat_[A-Za-z0-9_]{40,}`,
-  String.raw`\bAKIA[0-9A-Z]{16}\b`,                                      // AWS
-  String.raw`\bxox[abprs]-[A-Za-z0-9-]{10,}`,                            // Slack
-  String.raw`\b\d{8,}:[A-Za-z0-9_-]{30,}`,                               // bot do Telegram
+  String.raw`\bAKIA[0-9A-Z]{16}\b`,
+  String.raw`\bxox[abprs]-[A-Za-z0-9-]{10,}`,
+  String.raw`\b\d{8,}:[A-Za-z0-9_-]{30,}`,
   String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----`,
-  String.raw`service_role[^\n]{0,40}eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}`,   // Supabase: a anon é pública; a service_role não
-  String.raw`(key|token|secret|senha|password|passwd|api)[\w-]*["']?\s*[:=]\s*["']?[a-f0-9]{32,}\b`,  // hex longo COM nome de chave
+  String.raw`service_role[^\n]{0,40}eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}`,
+  String.raw`(key|token|secret|senha|password|passwd|api)[\w-]*["']?\s*[:=]\s*["']?[a-f0-9]{32,}\b`,
 ].join('|'), 'i');
 const ARQ_SEGREDO = /(^|\/)(\.env(\.[\w-]+)?|\.dev\.vars)$/;
 const ARQ_OK = /\.(example|sample|template|exemplo|modelo)$/;
 const SEM_LER = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock)$/;
 const ESCAPA = /segredo-ok/;
 
-// O repositório é o do `git -C <pasta>` ou o do `cd <pasta>` antes do commit, no mesmo comando — não a pasta onde o
-// agente está: sem isto, `git -C x commit` e `cd x && git commit` passavam sem olhar nada (07/10/2026)
 const tira = s => s.replace(/^["']|["']$/g, '').replace(/^~(?=\/|$)/, os.homedir()).replace(/^\/([a-z])(?=\/|$)/i, '$1:');
 function pastaDoGit(partes, cwd) {
   let dir = cwd;
@@ -86,7 +61,7 @@ function analisar(cmd, cwd) {
       diffs.push(git(['diff', '-U0', '--no-color', '--', ...citados]));
     }
     const novos = tudo ? git(['ls-files', '--others', '--exclude-standard']) : citados.length ? git(['ls-files', '--others', '--exclude-standard', '--', ...citados]) : '';
-    for (const f of novos.split('\n').filter(Boolean)) {                 // arquivo novo: o conteúdo inteiro entra
+    for (const f of novos.split('\n').filter(Boolean)) {
       nomes.add(f);
       if (SEM_LER.test(f)) continue;
       try { const st = fs.statSync(path.join(cwd, f)); if (st.size > 1 << 20) continue;
@@ -97,7 +72,7 @@ function analisar(cmd, cwd) {
     const temUpstream = git(['rev-parse', '--abbrev-ref', '@{u}']).trim();
     const faixa = temUpstream ? ['@{u}..HEAD'] : ['HEAD', '--not', '--remotes'];
     git(['log', '--format=', '--name-only', ...faixa]).split('\n').forEach(f => f && nomes.add(f));
-    diffs.push(git(['log', '-p', '-U0', '--format=', '--no-color', ...faixa]));   // --format= : sem o hash do commit, que casava com hex
+    diffs.push(git(['log', '-p', '-U0', '--format=', '--no-color', ...faixa]));
   }
 
   for (const f of nomes) if (ARQ_SEGREDO.test(f) && !ARQ_OK.test(f)) achados.push(`${f}: arquivo de segredo — fica fora do Git (ponha no .gitignore e tire com git rm --cached)`);
@@ -111,7 +86,6 @@ function analisar(cmd, cwd) {
   return [...new Set(achados), ...(commit ? regras(raiz, git, nomes, partes) : [])];
 }
 
-// `.claude/regras-git`: o que a pessoa combinou para ESTE repositório. Volta as regras quebradas, com a marca "regra: "
 function regras(raiz, git, nomes, partes) {
   let txt = ''; try { txt = fs.readFileSync(path.join(raiz, '.claude', 'regras-git'), 'utf8'); } catch { return []; }
   const out = [];
@@ -177,7 +151,7 @@ function teste() {
   caso('cd <pasta> && git commit de fora nega', chaveRep, `cd "${rep}" && git add -A && git commit -m x`, true, raiz);
   caso('comandos em linhas separadas negam', chaveRep, `cd "${rep}"\ngit add -A\ngit commit -m x`, true, raiz);
   caso('caminho do Git Bash (/c/...) nega', chaveRep, `git -C "${rep.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (m, l) => '/' + l.toLowerCase())}" add -A; git -C "${rep.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (m, l) => '/' + l.toLowerCase())}" commit -m x`, true, raiz);
-  // as regras de git do projeto (.claude/regras-git)
+
   sh('git reset -q --hard @{u}', rep);
   const regrasDe = t => { fs.mkdirSync(path.join(rep, '.claude'), { recursive: true }); esc('.claude/regras-git', t); sh('git add .claude && git commit -q -m regras', rep); };
   const ramo = () => cp.execSync('git rev-parse --abbrev-ref HEAD', { cwd: rep, encoding: 'utf8' }).trim();
@@ -204,6 +178,6 @@ else {
       const e = JSON.parse(entrada), cmd = (e.tool_input && e.tool_input.command) || '';
       const achados = analisar(cmd, e.cwd || process.cwd());
       if (achados && achados.length) console.log(negar(achados));
-    } catch {}                                                          // falhou aqui dentro: deixa passar
+    } catch {}
   });
 }

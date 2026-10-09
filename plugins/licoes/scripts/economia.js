@@ -1,21 +1,10 @@
 #!/usr/bin/env node
-// economia.js — quanto os dois ralos que esta pasta fecha custaram NESTA máquina, lido dos logs do
-// Claude Code (~/.claude/projects). Nada sai do computador; só lê. A saída se lê sem o agente traduzir.
-//   node <PASTA-LICOES>/economia.js               → antes × depois da data das boas-vindas do meu/PERFIL.md
-//   node <PASTA-LICOES>/economia.js 2026-09-13    → antes × depois desta data
-//   node <PASTA-LICOES>/economia.js --lista       → e cada volta fria, uma por linha
-//   node <PASTA-LICOES>/economia.js --tecnico     → a saída de medição (chamadas, US$ por ralo, quanto um chat novo pouparia)
-//   node <PASTA-LICOES>/economia.js --budget [dias] [here] → para onde foi o uso dos últimos 7 dias (o /budget do plugin, o /licoes-budget solto)
-//   node <PASTA-LICOES>/economia.js --teste       → o autoteste do --budget, com logs falsos numa pasta temporária
-// Os dois ralos (09 §9.15 e §9.14): VOLTA FRIA — a mensagem que chega a um chat de 100 mil+ tokens depois
-// de 60+ min parado e reescreve o cache inteiro; e CONVERSA ACIMA DE 200 MIL — cada chamada relê o que
-// passou disso. Valores em US$ de API: a assinatura não publica o limite em tokens, mas gasta na mesma proporção.
-// Preços: platform.claude.com/docs/en/about-claude/pricing, conferidos em 07/10/2026.
+
 const fs = require('fs'), path = require('path'), os = require('os');
-// [trecho do nome do modelo, US$ por milhão de entrada, de leitura de cache] — saída = 5× a entrada
+
 const PRECOS = [['fable-5-1', 10, 0.25], ['fable', 10, 1], ['opus-5-5', 4, 0.2], ['opus', 5, 0.5],
   ['sonnet-5-5', 2, 0.1], ['sonnet-5', 2, 0.2], ['sonnet', 3, 0.3], ['haiku-5', 0.1, 0.01], ['haiku', 1, 0.1]];
-// o Haiku 5.5 cobra pelo tamanho do pedido: acima de 100 mil tokens de entrada, tudo custa 5× (09 §9.2)
+
 const preco = m => PRECOS.find(([k]) => (m || '').includes(k)) || [null, 0, 0];
 const ctx = u => (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
 const fatorEscrita = u => ((u.cache_creation && u.cache_creation.ephemeral_1h_input_tokens) || 0) > 0 ? 2 : 1.25;
@@ -23,7 +12,7 @@ const custo = c => { const u = c.u, [k, e0, l0] = preco(c.model), x = k === 'hai
   return ((u.input_tokens || 0) * e + (u.cache_creation_input_tokens || 0) * e * fatorEscrita(u)
     + (u.cache_read_input_tokens || 0) * l + (u.output_tokens || 0) * e * 5) / 1e6; };
 
-function chamadas(arq) {  // uma chamada vira várias linhas no log; fica uma por id, só a conversa principal
+function chamadas(arq) {
   const porId = new Map();
   for (const l of fs.readFileSync(arq, 'utf8').split('\n')) {
     if (!l.includes('"usage"')) continue;
@@ -35,17 +24,14 @@ function chamadas(arq) {  // uma chamada vira várias linhas no log; fica uma po
   return [...porId.values()].sort((a, b) => a.t - b.t);
 }
 
-// ---------- --budget: para onde foi o uso dos últimos N dias, em dólar, até a saída de ferramenta que mais custou carregar.
-// Ideia do /budget da Helena (vijcoelho/project-helena, MIT), com dólar, modelo e sub-agentes, e a maior alavanca calculada.
-// As pastas mudam por variável só para o --teste: ECONOMIA_PROJETOS, DESTILAR_ESTADO, ROTINAS_ESTADO, LIMITES_ARQ.
 const casa = (v, ...p) => process.env[v] || path.join(os.homedir(), '.claude', ...p);
 const raiz = () => casa('ECONOMIA_PROJETOS', 'projects');
 const diaLocal = t => { const d = new Date(t), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; };
-const tamanho = c => typeof c === 'string' ? c.length  // imagem: ~1.500 tokens, que são ~6 mil caracteres
+const tamanho = c => typeof c === 'string' ? c.length
   : Array.isArray(c) ? c.reduce((s, b) => s + (b.type === 'image' ? 6000 : (b.text || '').length), 0) : 0;
 const alvo = (i = {}) => String((i.file_path || i.notebook_path || '').split(/[\\/]/).pop() || i.command || i.pattern || i.url || i.query || i.description || '').replace(/\s+/g, ' ');
 
-function lerSessao(arq) {  // na ordem do arquivo: as chamadas (uma por id, a última usage vale), as saídas de ferramenta e o que a pessoa escreveu
+function lerSessao(arq) {
   const ev = [], porId = new Map(), ferr = new Map(), s = { ev, cwd: '', titulo: '' };
   for (const l of fs.readFileSync(arq, 'utf8').split('\n')) {
     let j; try { j = JSON.parse(l); } catch { continue; }
@@ -69,7 +55,7 @@ function lerSessao(arq) {  // na ordem do arquivo: as chamadas (uma por id, a ú
 }
 
 function orcamento(dias, aqui, agora = Date.now()) {
-  const h = new Date(agora), desde = new Date(h.getFullYear(), h.getMonth(), h.getDate() - dias + 1).getTime();  // dia local inteiro
+  const h = new Date(agora), desde = new Date(h.getFullYear(), h.getMonth(), h.getDate() - dias + 1).getTime();
   const R = { dias, desde, usd: 0, tok: 0, msgs: 0, lido: 0, entrada: 0, principal: 0, dia: {}, proj: {}, modelo: {}, sub: 0, subMsgs: 0,
     chats: [], primeiros: [], ctxSoma: 0, ctxN: 0, ferr: {}, saidas: [], grandes: 0, frias: 0, friasUsd: 0, poupavel: 0, acima: 0, acimaUsd: 0, plugin: 0, limites: [] };
   const mais = (o, k, v) => { o[k] = (o[k] || 0) + v; };
@@ -78,7 +64,7 @@ function orcamento(dias, aqui, agora = Date.now()) {
     mais(R.dia, diaLocal(c.t), v); mais(R.proj, s.proj, v); mais(R.modelo, String(c.model || '?').replace(/^claude-/, ''), v); return v; };
   const so = t => String(t).replace(/\\/g, '/').toLowerCase(), aquiDir = so(process.cwd()), aquiNome = process.cwd().replace(/[^a-z0-9]/gi, '-').toLowerCase();
   const recente = a => fs.statSync(a).mtimeMs >= desde;
-  for (const proj of fs.existsSync(raiz()) ? fs.readdirSync(raiz()).filter(p => !/-Temp-|-tmp-/i.test(p)) : []) {  // pastas de teste ficam de fora
+  for (const proj of fs.existsSync(raiz()) ? fs.readdirSync(raiz()).filter(p => !/-Temp-|-tmp-/i.test(p)) : []) {
     const dir = path.join(raiz(), proj);
     if (!fs.statSync(dir).isDirectory()) continue;
     for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.jsonl') && recente(path.join(dir, f)))) {
@@ -89,10 +75,10 @@ function orcamento(dias, aqui, agora = Date.now()) {
       for (const g of fs.existsSync(subDir) ? fs.readdirSync(subDir).filter(g => g.endsWith('.jsonl') && recente(path.join(subDir, g))) : [])
         for (const c of lerSessao(path.join(subDir, g)).ev) if (c.u && c.t >= desde) { R.sub += conta(c, s); R.subMsgs++; }
       for (const c of s.ev) if (c.u && c.side && c.t >= desde) { R.sub += conta(c, s); R.subMsgs++; }
-      const ch = s.ev.filter(c => c.u && !c.side);  // a conversa principal
-      // até onde cada chamada carrega o que entrou nela: até o contexto cair mais de 20 mil (compactação ou /clear)
+      const ch = s.ev.filter(c => c.u && !c.side);
+
       const fim = []; for (let i = ch.length - 1; i >= 0; i--) fim[i] = i < ch.length - 1 && ctx(ch[i + 1].u) >= ctx(ch[i].u) - 20000 ? fim[i + 1] : i;
-      const L = [0]; ch.forEach((c, i) => L.push(L[i] + preco(c.model)[2]));  // a soma do preço de leitura até cada chamada
+      const L = [0]; ch.forEach((c, i) => L.push(L[i] + preco(c.model)[2]));
       let pend = [], i = -1;
       for (const c of s.ev) {
         if (!c.u) { if (i >= 0) pend.push(c); continue; }
@@ -102,29 +88,29 @@ function orcamento(dias, aqui, agora = Date.now()) {
         R.principal += conta(c, s); R.ctxSoma += ctx(c.u); R.ctxN++;
         if (i === 0) R.primeiros.push(ctx(c.u));
         const [, e, l] = preco(c.model), cx = ctx(c.u), escrito = c.u.cache_creation_input_tokens || 0;
-        if (cx > 200000) { R.acima++; R.acimaUsd += (cx - 200000) * l / 1e6; }  // os dois ralos: a mesma regra do modo normal
+        if (cx > 200000) { R.acima++; R.acimaUsd += (cx - 200000) * l / 1e6; }
         if (a && c.t - a.t >= 3600000 && ctx(a.u) >= 100000 && escrito >= 50000) {
           const pago = escrito * e * fatorEscrita(c.u) / 1e6; R.frias++; R.friasUsd += pago; R.poupavel += Math.max(0, pago - 50000 * e * 1.25 / 1e6); }
-        // o que entrou desde a anterior, repartido pelo tamanho; carregar = gravar no cache aqui + reler em cada chamada até o contexto cair
+
         const novo = a ? cx - ctx(a.u) - (a.u.output_tokens || 0) : 0, total = p.reduce((x, q) => x + q.chars, 0);
         if (novo > 0 && total) for (const q of p.filter(q => q.f)) {
           const T = novo * q.chars / total, usd = T * (e * fatorEscrita(c.u) + L[fim[i] + 1] - L[i + 1]) / 1e6, F = R.ferr[q.nome] = R.ferr[q.nome] || { tok: 0, usd: 0 };
           F.tok += T; F.usd += usd; R.saidas.push({ nome: q.nome, alvo: q.alvo, T, usd, n: fim[i] - i, t: c.t, proj: s.proj });
-          if (T >= 10000) R.grandes += usd * (1 - 2000 / T);  // ler por trecho: o que custaria com 2 mil tokens
+          if (T >= 10000) R.grandes += usd * (1 - 2000 / T);
         }
       }
       if (s.usd) R.chats.push({ usd: s.usd, t: s.t, proj: s.proj, nome: s.nome || s.titulo || '(sem título)' });
     }
   }
-  for (const [v, p] of [['DESTILAR_ESTADO', 'destilar'], ['ROTINAS_ESTADO', 'rotinas']])  // o que o plugin rodou sozinho (Haiku)
+  for (const [v, p] of [['DESTILAR_ESTADO', 'destilar'], ['ROTINAS_ESTADO', 'rotinas']])
     try { for (const l of fs.readFileSync(path.join(casa(v, 'ganchos', p), 'registro.log'), 'utf8').split('\n'))
       if (Date.parse(l.slice(0, 24)) >= desde) R.plugin += Number((l.match(/US\$ ([\d.]+)/) || [])[1] || 0); } catch {}
-  try { const j = JSON.parse(fs.readFileSync(casa('LIMITES_ARQ', 'ganchos', 'limites.json'), 'utf8'));  // gravado pela barra de status ou pelo mod
+  try { const j = JSON.parse(fs.readFileSync(casa('LIMITES_ARQ', 'ganchos', 'limites.json'), 'utf8'));
     R.gravado = j.gravado; R.limites = Object.entries(j).filter(([n, x]) => n !== 'gravado' && x && typeof x.pct === 'number' && !(x.volta && x.volta * 1000 < agora)); } catch {}
   return R;
 }
 
-function mostrar(R, aqui, agora = Date.now()) {  // pt-BR, linhas de até 70 caracteres, barra só com # e - (o mesmo motivo do modo normal)
+function mostrar(R, aqui, agora = Date.now()) {
   const o = [], rs = v => 'US$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const tk = n => n >= 1e6 ? (n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mi' : Math.round(n / 1000) + ' mil';
   const barra = (p, n = 20) => { const k = Math.max(0, Math.min(n, Math.round(p * n))) || 0; return '[' + '#'.repeat(k) + '-'.repeat(n - k) + ']'; };
@@ -187,7 +173,7 @@ function mostrar(R, aqui, agora = Date.now()) {  // pt-BR, linhas de até 70 car
   return o.join('\n');
 }
 
-function teste() {  // logs falsos com números conhecidos; cada conta conferida à mão
+function teste() {
   const T = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'economia-'))), agora = Date.now(), H = 3600000, D = 24 * H;
   let falhas = 0; const confere = (ok, o) => { console.log((ok ? 'ok      ' : 'FALHOU  ') + o); if (!ok) falhas++; };
   const perto = (a, b) => Math.abs(a - b) < 1e-9, iso = t => new Date(t).toISOString();
@@ -249,7 +235,7 @@ if (args.includes('--teste')) return teste();
 if (args.includes('--budget')) { const aqui = args.some(a => /^(here|aqui)$/i.test(a));
   return console.log(mostrar(orcamento(Number(args.find(a => /^\d+$/.test(a)) || 7), aqui), aqui)); }
 let data = args.find(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
-if (!data) try {  // a data das boas-vindas: é quando a pasta chegou a esta pessoa
+if (!data) try {
   const m = fs.readFileSync(path.join(__dirname, 'meu', 'PERFIL.md'), 'utf8')
     .match(/Boas-vindas da pasta\**\s*\|\s*(\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})/);
   if (m) data = m[1].includes('/') ? m[1].split('/').reverse().join('-') : m[1];
@@ -260,7 +246,7 @@ const P = { antes: novo(), depois: novo() }, lista = [];
 
 const RAIZ = raiz();
 if (!fs.existsSync(RAIZ)) { console.log('sem logs do Claude Code nesta máquina (~/.claude/projects)'); process.exit(0); }
-for (const proj of fs.readdirSync(RAIZ).filter(p => !/-Temp-|-tmp-/i.test(p))) {  // pastas de teste ficam de fora
+for (const proj of fs.readdirSync(RAIZ).filter(p => !/-Temp-|-tmp-/i.test(p))) {
   const dir = path.join(RAIZ, proj);
   if (!fs.statSync(dir).isDirectory()) continue;
   for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.jsonl'))) {
@@ -271,7 +257,7 @@ for (const proj of fs.readdirSync(RAIZ).filter(p => !/-Temp-|-tmp-/i.test(p))) {
       if (cx > 200000) { q.acima++; q.acimaUsd += (cx - 200000) * l / 1e6; }
       const a = cs[i - 1], escrito = c.u.cache_creation_input_tokens || 0;
       if (a && (c.t - a.t) >= 3600000 && ctx(a.u) >= 100000 && escrito >= 50000) {
-        const pago = escrito * e * fatorEscrita(c.u) / 1e6, chatNovo = 50000 * e * 1.25 / 1e6;  // chat novo: ~50 mil
+        const pago = escrito * e * fatorEscrita(c.u) / 1e6, chatNovo = 50000 * e * 1.25 / 1e6;
         q.frias++; q.friasUsd += pago; q.poupavel += Math.max(0, pago - chatNovo);
         lista.push(`  ${new Date(c.t).toISOString().slice(0, 10)} · ${Math.round(ctx(a.u) / 1000)} mil · parado ${Math.round((c.t - a.t) / 3600000)} h · US$ ${pago.toFixed(2)}`);
       }
@@ -281,7 +267,7 @@ for (const proj of fs.readdirSync(RAIZ).filter(p => !/-Temp-|-tmp-/i.test(p))) {
 
 const usd = v => 'US$ ' + v.toFixed(2);
 const pct = (a, b) => (b ? 100 * a / b : 0).toFixed(0) + '%';
-if (args.includes('--tecnico')) {  // a saída de medição, para o agente (09 §9.15)
+if (args.includes('--tecnico')) {
   for (const [nome, q] of Object.entries(P)) {
     if (!q.chamadas) continue;
     const titulo = !data ? 'todo o período' : nome === 'antes' ? `antes de ${data}` : `desde ${data}`;
@@ -290,9 +276,8 @@ if (args.includes('--tecnico')) {  // a saída de medição, para o agente (09 �
     console.log(`  chamadas acima de 200 mil: ${pct(q.acima, q.chamadas)} delas · a parte acima de 200 mil custou ${usd(q.acimaUsd)} (${pct(q.acimaUsd, q.usd)} do gasto)`);
   }
   if (!data) console.log('(sem data de comparação: passe AAAA-MM-DD, ou grave as boas-vindas no meu/PERFIL.md)');
-} else {  // a saída de quem nunca programou: lida direto, sem o agente traduzir (pedido do dono, 25/09/2026)
-  // Só ASCII na barra e linhas de até ~70 caracteres: '█' e '░' saíram com alturas diferentes na fonte do app,
-  // e a linha longa quebrou por cima do texto (visto pelo dono, 25/09/2026)
+} else {
+
   const br = d => d.split('-').reverse().join('/'), n = f => Math.round(f * 100);
   const barra = p => '[' + '#'.repeat(Math.round(p / 5)) + '-'.repeat(20 - Math.round(p / 5)) + ']';
   const brl = v => 'US$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -301,7 +286,7 @@ if (args.includes('--tecnico')) {  // a saída de medição, para o agente (09 �
   for (const [nome, q] of Object.entries(P)) {
     if (!q.chamadas) continue;
     const titulo = !data ? 'Todo o período' : nome === 'antes' ? `ANTES da pasta (até ${br(data)})` : `DEPOIS da pasta (desde ${br(data)})`;
-    const a = n(q.friasUsd / q.usd), b = n(q.acimaUsd / q.usd);  // o total é a soma das partes: 11% + 22% não mostra 34%
+    const a = n(q.friasUsd / q.usd), b = n(q.acimaUsd / q.usd);
     console.log(`${titulo} — ${q.dias.size} dias de uso`);
     console.log(`  ${barra(a + b)}  ${a + b}% do que você gastou foi desperdício:`);
     console.log(`   • ${a}% — voltar a uma conversa grande depois de 1 hora parado`);

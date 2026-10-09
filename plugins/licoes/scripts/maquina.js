@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-// Identificador desta máquina, mandado ao servidor no cabeçalho X-Maquina (limite de 3 máquinas por chave).
-// Nasce na primeira vez e fica em ~/.claude/licoes-maquina.txt. Na nuvem (claude.ai/code) o contêiner é novo a
-// cada sessão, então lá o identificador é um só: "nuvem" — senão cada sessão contaria como máquina nova.
-// Qualquer falha: sai sem o cabeçalho (o servidor conta como "sem-id"), nunca trava a conexão.
+
 const fs = require('fs'), path = require('path'), os = require('os'), crypto = require('crypto');
 let id = 'sem-id';
 try {

@@ -1,25 +1,4 @@
 #!/usr/bin/env node
-// A BIBLIOTECA de skills — skill que você quer à mão sem pagar a descrição dela em toda mensagem (base LIÇÕES
-// GERAIS, `10`, linha "Skill de nicho que você quer à mão sem gastar o teto", 3ª saída).
-//
-// Skill em `.claude/skills/` põe a descrição na lista de TODA mensagem. Na biblioteca (`~/.claude/biblioteca/`) ela
-// não custa nada até ser lida: fica uma skill só, a `biblioteca` (~60 tokens na lista), que manda o agente ler o
-// `CATALOGO.md` (nome, descrição curta e caminho de cada uma) e carregar só o que o pedido precisa.
-// Provado em 07/10/2026: 14 skills de design na biblioteca, pedido "deixa redondo para o celular", Sonnet — 4 de 4
-// acharam a `mobile-native` e aplicaram os 9 consertos dela.
-// O que se perde: o agente só procura quando o pedido soa como especialidade; skill que precisa disparar sozinha
-// em todo projeto (auditar-skill, critico-cego) fica em `.claude/skills/`. Skill de PLUGIN não se move por aqui.
-// Ideia: `library.py` + `skills/library` do vijcoelho/project-helena (MIT, commit c356888, CREDITOS.md). Daqui: o
-// catálogo em arquivo (a lista da Helena ia no gancho), mover/voltar com a pasta inteira, e o --teste.
-//
-// Uso (a pasta da biblioteca é por máquina, como o `~/.claude`):
-//   node biblioteca.js instalar              cria ~/.claude/biblioteca/ e a skill `biblioteca` em ~/.claude/skills/
-//   node biblioteca.js mover <nome...>       ~/.claude/skills/<nome> → biblioteca, e refaz o catálogo
-//   node biblioteca.js voltar <nome...>      biblioteca → ~/.claude/skills/<nome>, e refaz o catálogo
-//   node biblioteca.js catalogo              refaz o CATALOGO.md (depois de copiar skill à mão para a biblioteca)
-//   --projeto   em mover/voltar: a skill do projeto (./.claude/skills/), não a do usuário
-//   node biblioteca.js --teste               tudo numa pasta temporária, sem tocar no ~/.claude
-// Vale na sessão SEGUINTE: a lista de skills se monta no começo do chat.
 
 'use strict';
 const fs = process.getBuiltinModule('fs'), path = process.getBuiltinModule('path'), os = process.getBuiltinModule('os');
@@ -28,9 +7,8 @@ const raiz = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.cl
 const pastaBib = () => path.join(raiz(), 'biblioteca');
 const pastaSkills = projeto => projeto ? path.join(process.cwd(), '.claude', 'skills') : path.join(raiz(), 'skills');
 const barra = p => p.replace(/\\/g, '/');
-const CORTE = 120;   // o tamanho provado: descrição cortada em 120 letras achou 4 de 4
+const CORTE = 120;
 
-// name e description do cabeçalho; aceita aspas e o bloco `>` / `|` de várias linhas
 function cabecalho(texto) {
   const m = texto.replace(/^﻿/, '').match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return {};

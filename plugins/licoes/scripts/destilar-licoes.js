@@ -1,31 +1,4 @@
 #!/usr/bin/env node
-// Destilador de LIÇÕES — gancho SessionEnd do Claude Code (base LIÇÕES GERAIS, FERRAMENTAS §17).
-//
-// Quando um chat termina (fechar, /clear, sair), este gancho se reabre em SEGUNDO PLANO e devolve o controle na hora.
-// Lá, lê o trecho novo da conversa (só o texto da pessoa e do agente; ferramenta e lembrete do sistema ficam de fora),
-// manda ao Haiku pelo `claude -p` enxuto (`07`, "claude -p barato") com a PORTARIA do LEIA-PRIMEIRO §4.2 e os títulos das
-// lições que já existem — e grava o que passar direto no `meu/LICOES-PROPRIAS.md`, com a marca ‹auto›.
-// "Na dúvida, não escreva": o normal é sair sem lição nenhuma. Custo medido no FERRAMENTAS §17.
-//
-// FAXINA, com volta: a cada 7 dias (e só com 30 lições ou mais), o Haiku olha os TÍTULOS, aponta grupos do mesmo ato
-// (duplicatas, ou uma que contradiz a outra) e funde cada grupo numa lição só — a mais nova vence. Antes de mexer, o
-// arquivo inteiro vai para `meu/Archive/`, e o `meu/Archive/FAXINA.md` diz o que se fundiu e como voltar.
-// Lição sem `‹nº›` não entra na faxina; texto fundido mais curto que 60% do maior original é recusado.
-//
-// Ideia: distill.py, end.js e tidy.py do vijcoelho/project-helena (MIT, commit c356888, CREDITOS.md). Daqui: a portaria
-// e os vetos da base no pedido, o formato e a numeração do `meu/`, a faxina por grupo (o resto do arquivo fica byte a
-// byte igual) e a cópia de volta antes de cada mudança.
-//
-// Ligar: ~/.claude/settings.json → hooks.SessionEnd E hooks.SessionStart, o mesmo command "node <caminho>/destilar-licoes.js"
-// (no começo de cada chat ele lê os chats deste projeto parados há mais de 1 hora — "os chats parados", abaixo).
-// Testar sem ligar nada e sem gastar:  node destilar-licoes.js --teste   (um `claude` de mentira, numa pasta temporária)
-// Rodar à mão num chat:  node destilar-licoes.js --rodar <transcript.jsonl> <pasta do projeto> [--licoes <arquivo>]
-// E o pedido que se REPETE vira skill na biblioteca ("o que se repete", abaixo). Desfazer: node destilar-licoes.js --desfazer <nome>
-// E a biblioteca se cuida ("a biblioteca que se cuida", abaixo): a skill usada e corrigida ganha linha no "## Aprendido", com
-// 5 linhas elas entram na receita (juntar), a ‹auto› sem uso há 30 dias vai para biblioteca/_arquivo (podar), e a cada 7
-// dias sai um resumo sem LLM do que rodou sozinho (semana).
-// Tudo o que rodou sozinho, com o comando de desfazer:  node destilar-licoes.js --listar
-// Tirar uma lição do meu/ (volta com --desfazer licao <nº>):  node destilar-licoes.js --esquecer <nº>
 
 'use strict';
 const fs = process.getBuiltinModule('fs'), path = process.getBuiltinModule('path'),
@@ -35,12 +8,10 @@ const ESTADO = process.env.DESTILAR_ESTADO || path.join(os.homedir(), '.claude',
 const CLAUDE = process.env.DESTILAR_CLAUDE || 'claude';
 const FLAGS = '-p --model haiku --tools "" --no-session-persistence --strict-mcp-config --disable-slash-commands '
   + '--setting-sources project --output-format json --max-budget-usd 0.10';
-// MIN_MENSAGENS conta a conversa toda (pessoa + agente). Contava só as da pessoa (4+) e pulava quase tudo: quem cola um
-// prompt e deixa o agente trabalhar manda 1 mensagem só — 13 de 15 chats deste projeto e 15 de 15 de outro (07/10/2026)
+
 const MIN_MENSAGENS = 6, TETO_CHARS = 40000, POR_MENSAGEM = 2000, MAX_LICOES = 2;
 const FAXINA_DIAS = 7, FAXINA_MIN = 30, FAXINA_GRUPOS = 3;
 
-// a mesma lista do segredo-no-commit.js (FERRAMENTAS §16): mascara antes de mandar, e barra a lição que trouxer um
 const SEGREDO = new RegExp([
   String.raw`\bsk[_-](live_|test_|ant-|proj-)?[A-Za-z0-9_-]{16,}`, String.raw`\b(pk|rk)_(live|test)_[A-Za-z0-9]{10,}`,
   String.raw`\bwhsec_[A-Za-z0-9]{20,}`, String.raw`\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}`, String.raw`\bAIza[0-9A-Za-z_-]{30,}`,
@@ -52,7 +23,6 @@ const SEGREDO = new RegExp([
 const temSegredo = s => { SEGREDO.lastIndex = 0; const r = SEGREDO.test(s); SEGREDO.lastIndex = 0; return r; };
 const mascarar = s => s.replace(SEGREDO, '[segredo]');
 
-// ---------- a base (mesma busca do chat-parado.js) ----------
 function acharPasta(cwd) {
   const tem = d => d && fs.existsSync(path.join(d, 'modelos', 'fim-do-chat.js'));
   const ok = d => { if (tem(d)) return d; try { for (const s of fs.readdirSync(d).sort().reverse()) if (tem(path.join(d, s))) return path.join(d, s); } catch {} return null; };
@@ -65,7 +35,6 @@ function acharPasta(cwd) {
   return null;
 }
 
-// ---------- estado (offset por transcript, data da última faxina) e trava ----------
 const arqEstado = () => path.join(ESTADO, 'estado.json');
 const lerEstado = () => { try { return JSON.parse(fs.readFileSync(arqEstado(), 'utf8')); } catch { return { lidos: {}, faxinaEm: 0 }; } };
 const gravarEstado = e => { fs.mkdirSync(ESTADO, { recursive: true }); fs.writeFileSync(arqEstado(), JSON.stringify(e, null, 1)); };
@@ -76,7 +45,6 @@ function travar() {
   try { fs.closeSync(fs.openSync(t, 'wx')); return () => { try { fs.unlinkSync(t); } catch {} }; } catch { return null; }
 }
 
-// ---------- a conversa ----------
 function textoDe(c) {
   if (typeof c === 'string') return c;
   if (!Array.isArray(c)) return '';
@@ -96,7 +64,6 @@ function lerConversa(transcript, desde) {
   return { msgs, total: linhas.length - (linhas[linhas.length - 1] === '' ? 1 : 0) };
 }
 
-// ---------- o arquivo de lições ----------
 function lerLicoes(arq) {
   const bruto = fs.readFileSync(arq, 'utf8'), crlf = bruto.includes('\r\n');
   const L = bruto.replace(/\r\n/g, '\n').split('\n');
@@ -115,12 +82,6 @@ const gravarLicoes = (arq, d) => { const t = d.L.join('\n'); fs.writeFileSync(ar
 const norm = s => String(s || '').toLowerCase().replace(/[\s"'“”‘’`*_]+/g, ' ').trim();
 const tituloLimpo = t => t.replace(/^### /, '').replace(/\s*‹[^›]*›/g, '').trim();
 
-// ---------- o Haiku ----------
-// pensar=false desliga o raciocínio do Haiku (MAX_THINKING_TOKENS=0): na triagem dos títulos ele gastava 5–8 mil tokens
-// pensando e custava 3–4× mais; na destilação, sem pensar custou estável (US$ 0,042–0,046 por chat, contra 0,034–0,080)
-// e escreveu menos lição de projeto. Só a fusão pensa: é ela que recusa o par ruim (medido em 06/10/2026, FERRAMENTAS §17).
-// No Haiku 5.5 (o `haiku` desde 07/10/2026) a variável é ignorada — ele sempre pensa um pouco —, e não faz falta: em 2 chats
-// reais, `--effort low` e o `medium` de fábrica deram as mesmas lições pelo mesmo US$ 0,002–0,004 (07/10/2026)
 function perguntar(pedido, pensar = true, seFalhar, soTexto) {
   const r = cp.spawnSync(`${CLAUDE} ${FLAGS}`, { input: pedido, shell: true, cwd: os.tmpdir(), encoding: 'utf8', windowsHide: true,
     timeout: 180000, env: { ...process.env, DESTILAR_FILHO: '1', ...(pensar ? {} : { MAX_THINKING_TOKENS: '0' }) } });
@@ -156,7 +117,6 @@ No máximo ${MAX_LICOES}. Sem lição: {"licoes":[]}
 Temas: 01 arquitetura · 02 autenticação · 03 banco de dados · 04 tipos · 05 interface · 06 testes · 07 ambiente e ferramentas ·
 08 processo de trabalho · 09 custo e modelos · 10 contexto e skills · 11 integrações e segurança · 12 sub-agentes.`;
 
-// a skill da biblioteca que o agente usou e a pessoa corrigiu: a correção vira linha no "## Aprendido" dela (distill.py, Helena)
 const APRENDIDO = nomes => `\n\nSKILLS DA BIBLIOTECA QUE O AGENTE USOU NESTE CHAT: ${nomes.join(', ')}. Se a PESSOA corrigiu ou melhorou um
 trabalho feito com uma delas, acrescente ao JSON "aprendido":[{"skill":"um desses nomes","licao":"uma linha, no imperativo, que vale
 da próxima vez","prova":"cópia LITERAL da frase da PESSOA corrigindo"}]. Só correção de verdade; sem ela, não ponha a chave.`;
@@ -170,8 +130,7 @@ function destilar(transcript, cwd, arqLicoes) {
   if (conversa.length > TETO_CHARS) conversa = '[…]\n' + conversa.slice(-TETO_CHARS);
   const d = lerLicoes(arqLicoes);
   const titulos = d.entradas.map(e => '- ' + tituloLimpo(e.titulo)).join('\n');
-  // e os títulos de FÁBRICA (01–12, FERRAMENTAS): sem eles o Haiku reescrevia como "nova" uma regra que o `09` já tinha
-  // (06/10/2026, "Claude Code na nuvem só vê o repositório"). ~425 títulos ≈ 8 mil tokens ≈ US$ 0,008 por chat
+
   const base = path.dirname(path.dirname(arqLicoes));
   let fabrica = ''; try {
     for (const a of fs.readdirSync(base).filter(n => /^((0\d|1[0-2])-.*|FERRAMENTAS)\.md$/.test(n)).sort())
@@ -189,8 +148,7 @@ function destilar(transcript, cwd, arqLicoes) {
     novidade(`a skill "${x.skill}" da biblioteca aprendeu com a sua correção: ${licao}. Não serve? node destilar-licoes.js --desfazer ${x.skill} aprendido`);
   }
   const novas = (Array.isArray(json.licoes) ? json.licoes : []).slice(0, MAX_LICOES).filter(x => {
-    // a PROVA: o trecho que mostra o custo tem de estar, letra por letra, na conversa — o Haiku com raciocínio inventava
-    // "custo" para decisão de produto que correu bem (06/10/2026, num chat real deste projeto)
+
     const prova = norm(x && x.prova).slice(0, 60), provada = prova.length >= 15 && norm(conversa).includes(prova);
     const ok = x && x.titulo && x.regra && x.aconteceu && provada && !String(x.parecida_com || '').trim() && !temSegredo(JSON.stringify(x));
     if (x && !ok) registrar(`recusou: ${String(x.titulo || '').slice(0, 80)}${x.parecida_com ? ' (parecida com ' + String(x.parecida_com).slice(0, 60) + ')' : provada ? '' : ' (sem prova literal)'}`);
@@ -198,7 +156,7 @@ function destilar(transcript, cwd, arqLicoes) {
   });
   if (novas.length) {
     const nr = gravarNovas(arqLicoes, novas, cwd, true);
-    // novidade para o começo do próximo chat (a chatNovo do chat-parado.js conta à pessoa, uma vez, e apaga); o "gravou:" é do resumo da semana
+
     for (let k = 0; k < novas.length; k++) {
       const t = `lição ‹auto› nº ${nr + k} gravada no meu/: ${String(novas[k].titulo).replace(/\s+/g, ' ').trim()}`;
       novidade(t); registrar(`gravou: ${t}`);
@@ -208,9 +166,8 @@ function destilar(transcript, cwd, arqLicoes) {
   registrar(`destilou ${transcript}: ${novas.length} lição(ões), US$ ${custo.toFixed(4)}`);
 }
 
-// grava em cima, com o próximo nº do cabeçalho; devolve o nº da primeira. auto=false: a pessoa ditou (/licoes:remember), sem ‹auto›
 function gravarNovas(arqLicoes, novas, cwd, auto) {
-  const d2 = lerLicoes(arqLicoes); // relê: outra sessão pode ter escrito enquanto o Haiku pensava
+  const d2 = lerLicoes(arqLicoes);
   const iCab = d2.L.findIndex(x => /Próximo nº: \d+|Next no\.: \d+/.test(x));
   let nr = iCab >= 0 ? Number(d2.L[iCab].match(/(\d+)/)[1]) : Math.max(0, ...d2.entradas.map(e => e.nr || 0)) + 1;
   const primeira = nr, hoje = new Date().toLocaleDateString('pt-BR'), proj = path.basename(cwd || '') || '?';
@@ -229,13 +186,12 @@ function gravarNovas(arqLicoes, novas, cwd, auto) {
   return primeira;
 }
 
-// ---------- a faxina, com volta ----------
 function faxina(arqLicoes, forcar) {
   const est = lerEstado();
   if (!forcar && Date.now() - (est.faxinaEm || 0) < FAXINA_DIAS * 864e5) return;
   const d = lerLicoes(arqLicoes), comNr = d.entradas.filter(e => e.nr), quando = est.faxinaEm || 0;
   est.faxinaEm = Date.now(); gravarEstado(est);
-  // o `claude -p` que falhou (o limite de uso acabou no meio, na prova real de 06/10/2026) não gasta a semana: tenta no próximo chat
+
   const devolver = () => { const e2 = lerEstado(); e2.faxinaEm = quando; gravarEstado(e2); };
   let falhou = false;
   if (comNr.length < FAXINA_MIN) { registrar(`faxina: só ${comNr.length} lições, nada a fazer`); return; }
@@ -253,7 +209,7 @@ parecido não basta: tem de ser a mesma regra. Na dúvida, não agrupe. Responda
     const atual = lerLicoes(arqLicoes);
     const membros = gr.numeros.map(n => atual.entradas.find(e => e.nr === Number(n))).filter(Boolean);
     if (membros.length < 2) continue;
-    // lição ‹auto› (ninguém conferiu) não se funde com lição conferida: a faxina real fundiu uma ‹auto› ruim na nº 57 (06/10/2026)
+
     if (new Set(membros.map(e => /‹auto›/.test(e.titulo))).size > 1) { registrar(`faxina: não funde ‹auto› com conferida (${membros.map(e => e.nr).join('+')})`); continue; }
     const corpo = e => atual.L.slice(e.ini + 1, e.fim).join('\n').trim();
     const maisNova = membros.reduce((a, b) => (b.nr > a.nr ? b : a));
@@ -266,7 +222,7 @@ idioma e mesmo formato (**O que aconteceu**, **A regra**…). Responda neste for
 TITULO: <o título, numa linha>
 CORPO:
 <o texto fundido>\n\n${textos}`);
-    // texto e não JSON: o corpo tem aspas e quebras de linha, e o Haiku as escapava errado (06/10/2026, na faxina real)
+
     custo += f.custo;
     const recusa = f.txt.match(/^\s*RECUSA:\s*(.*)/);
     if (recusa) { registrar(`faxina: o Haiku recusou fundir ${membros.map(e => e.nr).join('+')}: ${recusa[1].slice(0, 120)}`); continue; }
@@ -277,7 +233,7 @@ CORPO:
     }
     const um = membros.every(e => /‹1×›/.test(e.titulo)) ? ' ‹1×›' : '';
     const titulo = `### ${novoTitulo.replace(/\s*‹[^›]*›/g, '').replace(/\s+/g, ' ')} ‹tema: ${maisNova.tema}› ‹nº ${maisNova.nr}›${um}`;
-    // de baixo para cima, para os índices das de cima não andarem
+
     for (const e of [...membros].sort((a, b) => b.ini - a.ini)) {
       if (e === maisNova) atual.L.splice(e.ini, e.fim - e.ini, titulo, '', novo, '');
       else atual.L.splice(e.ini, e.fim - e.ini);
@@ -293,14 +249,6 @@ CORPO:
   registrar(`faxina: ${feitos.length} fusão(ões), US$ ${custo.toFixed(4)}`);
 }
 
-// ---------- o que se repete vira skill ----------
-// A lição nasce de um erro; a SKILL nasce de um pedido que volta. Cada pedido curto da pessoa (até 600 caracteres: mais
-// que isso é especificação colada) entra num grupo pelas palavras (Jaccard ≥ 0,45 com as 10 mais comuns do grupo). Grupo
-// com 5 pedidos em 2+ chats (ou 20 num só) vai ao Haiku com o que o agente FEZ em cada vez; procedimento de vários passos
-// com detalhe que vale lembrar → skill na biblioteca (~/.claude/biblioteca), que o licao-na-mensagem.js aponta quando o
-// pedido casa. Commit, push e "roda o projeto" o Haiku recusa. Um grupo por vez; o recusado não volta.
-// Ideia: patterns() e install_skill() do worker.py do project-helena (MIT). Daqui: o crivo em português, a biblioteca
-// e o --desfazer.
 const REPETE_SIM = .45, REPETE_USOS = 5, REPETE_CHATS = 2, REPETE_SO = 20, REPETE_MAX_CHARS = 600;
 const VAZIAS = new Set(('que com para por uma uns umas dos das nos nas não sim mas como mais isso esse essa este esta aqui ali '
   + 'ele ela eles você voce vc pra pro tem ter ser foi faz fazer agora ainda também tambem sobre entre onde quando porque '
@@ -321,7 +269,7 @@ Nunca ponha segredo, chave ou senha na skill. Escreva na língua dos pedidos. Re
 {"vale": true|false, "nome": "kebab-case", "descricao": "quando usar, uma frase, com as palavras que a pessoa usa ao pedir",
  "passos": "a receita em markdown, até 40 linhas"}`;
 
-function pedidosDe(transcript, desde) {                            // [{t, acoes}] da pessoa, com o que o agente fez depois
+function pedidosDe(transcript, desde) {
   const linhas = fs.readFileSync(transcript, 'utf8').split('\n'), out = [];
   for (const l of linhas.slice(desde)) {
     let o; try { o = JSON.parse(l); } catch { continue; }
@@ -344,15 +292,15 @@ function repete(transcript) {
   let st; try { st = JSON.parse(fs.readFileSync(arqRepete(), 'utf8')); } catch { st = { grupos: [], lidos: {} }; }
   const { pedidos, total } = pedidosDe(transcript, st.lidos[transcript] || 0), chat = path.basename(transcript, '.jsonl');
   st.lidos[transcript] = total;
-  // benchmark e teste rodam no temp (e gravam o chat na pasta do projeto que os lançou): não são hábito da pessoa (07/10/2026)
+
   const noTemp = p => path.resolve(p.cwd || '/').toLowerCase().startsWith(path.resolve(os.tmpdir()).toLowerCase());
   for (const p of pedidos.filter(p => !noTemp(p))) {
     const w = palavras(p.t);
-    if (p.t.length > REPETE_MAX_CHARS || w.size < 3) continue;                  // "commit e push" não precisa de skill
+    if (p.t.length > REPETE_MAX_CHARS || w.size < 3) continue;
     const sim = g => { const top = new Set(g.top); let i = 0; for (const x of w) if (top.has(x)) i++; return i / (w.size + top.size - i); };
     let g = st.grupos.reduce((m, x) => (!m || sim(x) > sim(m) ? x : m), null);
     if (!g || sim(g) < REPETE_SIM) st.grupos.push(g = { top: [...w].sort(), contas: {}, usos: 0, chats: [], exemplos: [], status: 'aberto' });
-    if (g.exemplos.some(e => e.t === p.t.slice(0, 300))) continue;               // o mesmo texto colado de novo não é pedido novo
+    if (g.exemplos.some(e => e.t === p.t.slice(0, 300))) continue;
     for (const x of w) g.contas[x] = (g.contas[x] || 0) + 1;
     g.top = Object.entries(g.contas).sort((a, b) => b[1] - a[1]).slice(0, 10).map(e => e[0]);
     g.usos++; if (!g.chats.includes(chat)) g.chats.push(chat);
@@ -382,10 +330,6 @@ function repete(transcript) {
   fs.writeFileSync(arqRepete(), JSON.stringify(st, null, 1));
 }
 
-// ---------- a biblioteca que se cuida: uso, "## Aprendido", juntar, podar — e o desfazer de cada um ----------
-// Ideia: used_skills() e learn() do distill.py, fold() e weekly() do tidy.py, prune() do worker.py e undo/unlearn/unfold do
-// skills.py, do project-helena (MIT). Daqui: a PROVA literal no Aprendido, a poda que ARQUIVA (a Helena apaga), o juntar que
-// recusa texto encolhido, e um desfazer para cada coisa que roda sozinha (--listar mostra todas).
 const PODA_DIAS = 30, JUNTAR_EM = 5, SEMANA_DIAS = 7, MARCA_AUTO = '‹auto› Criada pelo destilar-licoes';
 const lerJSON = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const arqUsos = () => path.join(ESTADO, 'usos.json');
@@ -395,14 +339,13 @@ function novidade(t) {
 const pastasDaBib = () => { try { return fs.readdirSync(biblioteca()).filter(n => !n.startsWith('_') && fs.existsSync(path.join(biblioteca(), n, 'SKILL.md'))); } catch { return []; } };
 const escRe = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const arqCatalogo = () => path.join(biblioteca(), 'CATALOGO.md');
-function porNoCatalogo(nome, desc) {                                 // o formato que o licao-na-mensagem.js e o biblioteca.js leem
+function porNoCatalogo(nome, desc) {
   fs.mkdirSync(biblioteca(), { recursive: true });
   fs.appendFileSync(arqCatalogo(), `${fs.existsSync(arqCatalogo()) ? '' : '# Catálogo da biblioteca\n\n'}- **${nome}**: ${String(desc).slice(0, 160)}  \n  \`${path.join(biblioteca(), nome, 'SKILL.md').replace(/\\/g, '/')}\`\n`);
 }
 const tirarDoCatalogo = nome => { try { fs.writeFileSync(arqCatalogo(), fs.readFileSync(arqCatalogo(), 'utf8').replace(new RegExp(`^- \\*\\*${escRe(nome)}\\*\\*:.*\\r?\\n.*(\\r?\\n|$)`, 'm'), '')); } catch {} };
 const descricaoDe = md => { try { return (fs.readFileSync(md, 'utf8').match(/^description:\s*(.*)$/m) || [])[1] || ''; } catch { return ''; } };
 
-// as skills da biblioteca que o AGENTE abriu (tool_use dele; o caminho que o gancho só listou não conta), com a hora de cada uso
 const USOU = /biblioteca[\\/]+([\w.-]+)[\\/]+SKILL\.md/g;
 function usadas(transcript, desde = 0) {
   let linhas; try { linhas = fs.readFileSync(transcript, 'utf8').split('\n').slice(desde); } catch { return []; }
@@ -419,15 +362,13 @@ function usadas(transcript, desde = 0) {
 }
 
 const linhasAprendidas = t => { const m = String(t).replace(/\r\n/g, '\n').match(/\n## Aprendido\n([\s\S]*?)(?=\n## |$)/); return m ? m[1].match(/^- .+/gm) || [] : []; };
-function aprender(md, linha) {                                       // no fim da seção "## Aprendido" (criada no fim, se falta)
+function aprender(md, linha) {
   const t = fs.readFileSync(md, 'utf8').replace(/\r\n/g, '\n').replace(/\n*$/, '\n'), i = t.indexOf('\n## Aprendido\n');
   if (i < 0) return fs.writeFileSync(md, `${t}\n## Aprendido\n\n${linha}\n`);
   const resto = t.slice(i + 14), f = resto.search(/\n## /), corpo = f < 0 ? resto : resto.slice(0, f);
   fs.writeFileSync(md, `${t.slice(0, i)}\n## Aprendido\n${corpo.replace(/\n*$/, '\n')}${linha}\n${f < 0 ? '' : resto.slice(f)}`);
 }
 
-// JUNTAR: com 5 linhas no Aprendido, o Haiku as põe no lugar certo da receita (fold() do tidy.py). Cópia antes, em
-// SKILL.md.antes-de-juntar; recusa texto que encolheu para menos de 60% ou que ainda tem a seção
 const JUNTAR = `JUNTAR-APRENDIDO. Abaixo, uma skill (receita que um agente de programação lê antes de uma tarefa). A seção "## Aprendido"
 tem correções que a pessoa fez em usos anteriores. Reescreva a skill pondo cada correção no lugar certo da receita e tire a seção
 "## Aprendido". Guarde tudo o que continua certo, os títulos e o idioma; não acrescente nada novo; onde uma correção contradiz a
@@ -449,8 +390,6 @@ function juntar() {
   }
 }
 
-// PODAR: a skill que ELE criou (‹auto›) e ninguém usou em 30 dias vai para biblioteca/_arquivo (prune() do worker.py, que apaga).
-// Conta o uso mais recente ou a criação; a skill que a pessoa pôs na biblioteca nunca é tocada
 function podar() {
   const u = lerJSON(arqUsos(), {});
   for (const n of pastasDaBib()) {
@@ -466,12 +405,11 @@ function podar() {
   }
 }
 
-// SEMANA: a cada 7 dias, sem LLM, o resumo do que rodou sozinho, lido do registro.log (weekly() do tidy.py)
 const semanaISO = d => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
   const a = t.getUTCFullYear(); return [a, Math.ceil(((t - Date.UTC(a, 0, 1)) / 864e5 + 1) / 7)]; };
 function semana(arqLicoes, forcar) {
   const est = lerEstado();
-  if (!est.semanaEm && !forcar) { est.semanaEm = Date.now(); gravarEstado(est); return; }           // conta da instalação
+  if (!est.semanaEm && !forcar) { est.semanaEm = Date.now(); gravarEstado(est); return; }
   if (!forcar && Date.now() - est.semanaEm < SEMANA_DIAS * 864e5) return;
   const desde = Date.now() - SEMANA_DIAS * 864e5;
   let log = []; try { log = fs.readFileSync(path.join(ESTADO, 'registro.log'), 'utf8').split('\n'); } catch {}
@@ -492,7 +430,6 @@ function semana(arqLicoes, forcar) {
   novidade(`resumo da semana ${sem}: ${licoes.length} lição(ões) ‹auto›, ${skills.length} skill(s) nova(s), US$ ${custo.toFixed(2)}; ${auto.length} ‹auto› esperando você conferir — ${out}`);
 }
 
-// ESQUECER uma lição do meu/ (/helena:forget, que apaga): vai para meu/Archive/ESQUECIDAS.md e volta com --desfazer licao <nº>
 const arqEsquecidas = arq => path.join(path.dirname(arq), 'Archive', 'ESQUECIDAS.md');
 function esquecer(nr, arq) {
   const d = lerLicoes(arq), e = d.entradas.find(x => x.nr === Number(nr));
@@ -510,15 +447,13 @@ function voltarLicao(nr, arq) {
   if (!m) return console.log(`A lição nº ${nr} não está em meu/Archive/ESQUECIDAS.md.`);
   const d = lerLicoes(arq);
   if (d.entradas.some(x => x.nr === Number(nr))) return console.log(`A lição nº ${nr} já está no meu/.`);
-  const antes = d.entradas.find(x => x.nr != null && x.nr < Number(nr));              // a mais nova em cima: entra antes da de nº menor
+  const antes = d.entradas.find(x => x.nr != null && x.nr < Number(nr));
   d.L.splice(antes ? antes.ini : d.entradas.length ? d.entradas[d.entradas.length - 1].fim : d.L.length, 0, ...m[1].trim().split('\n'), '');
   gravarLicoes(arq, d); fs.writeFileSync(esq, t.replace(m[0], ''));
   registrar(`voltou: lição nº ${nr}`);
   console.log(`Lição nº ${nr} de volta no meu/.`);
 }
 
-// DESFAZER: sem segundo argumento apaga a skill que ele criou (o grupo de pedidos não vira skill de novo); com "poda",
-// "juntar" ou "aprendido", desfaz aquela coisa só; "licao <nº>" devolve a lição esquecida
 function desfazer(nome, oque, arqLicoes) {
   if (nome === 'licao') return voltarLicao(oque, arqLicoes);
   const pasta = path.join(biblioteca(), String(nome || '_')), md = path.join(pasta, 'SKILL.md');
@@ -546,7 +481,6 @@ function desfazer(nome, oque, arqLicoes) {
   console.log(`Skill "${nome}" apagada da biblioteca; esse grupo de pedidos não vira skill de novo.`);
 }
 
-// LISTAR: tudo o que rodou sozinho e ainda dá para desfazer, cada um com o comando
 function listar(arqLicoes) {
   const out = [], cmd = 'node destilar-licoes.js';
   for (const n of pastasDaBib()) {
@@ -566,11 +500,6 @@ function listar(arqLicoes) {
   console.log(out.length ? out.join('\n') : 'Nada rodou sozinho ainda.');
 }
 
-// ---------- os chats parados ----------
-// O SessionEnd não dispara quando o terminal é morto, e no app de desktop o chat quase nunca "termina" (fica parado na
-// lista). Por isso o SessionStart também chama: lê os chats DESTE projeto parados há mais de 1 hora (o cache já venceu,
-// ninguém volta a eles barato) — no máximo 3 por vez, e só os que mexeram depois da instalação, para não gastar com o
-// passado. Ideia do start.js da Helena, que relança o trabalhador pelo mesmo motivo.
 const PARADO_MIN = 60, PARADOS_MAX = 3;
 function parados(atual) {
   const est = lerEstado();
@@ -583,16 +512,12 @@ function parados(atual) {
 }
 const marcarVisto = (t, m) => { const e = lerEstado(); e.vistos = e.vistos || {}; e.vistos[t] = m; gravarEstado(e); };
 
-// No PLUGIN não há base (as lições vêm do servidor): só com a opção "destilar" ligada, e as lições próprias moram na opção
-// "pasta_meu" ou em ~/.claude/licoes/meu — fora da pasta do plugin, que cada versão troca, e do CLAUDE_PLUGIN_DATA, que some
-// ao desinstalar (07/10/2026, revisão do plugin × Helena).
 function arquivoMeu(cwd) {
   const base = acharPasta(cwd); if (base) return path.join(base, 'meu', 'LICOES-PROPRIAS.md');
   if (!process.env.CLAUDE_PLUGIN_ROOT || !/^(true|1|sim)$/i.test(process.env.CLAUDE_PLUGIN_OPTION_DESTILAR || '')) return null;
   return criarMeu(process.env.CLAUDE_PLUGIN_OPTION_PASTA_MEU);
 }
-// os COMANDOS (/licoes:status, :remember…) a pessoa chama de propósito, então não pedem a opção "destilar": --licoes › base › --meu.
-// No plugin o --meu chega como ${user_config.pasta_meu}; vazio, ou o texto cru "${…}" de opção sem valor, é a pasta padrão
+
 function arqDoComando(licoes, meu, cwd, criar) {
   if (licoes) return licoes;
   const base = acharPasta(cwd); if (base) return path.join(base, 'meu', 'LICOES-PROPRIAS.md');
@@ -621,16 +546,14 @@ function rodar(transcript, cwd, arqLicoes, inicio) {
   } catch (e) { registrar('ERRO ' + (e && e.message || e)); } finally { soltar(); }
 }
 
-// no plugin, /licoes:status; na base, a skill licoes-status. Pelo lugar do script: o comando `!` de uma skill não recebe CLAUDE_PLUGIN_ROOT no ambiente (provado 07/10)
 const NO_PLUGIN = () => !!process.env.CLAUDE_PLUGIN_ROOT || fs.existsSync(path.join(__dirname, '..', '.claude-plugin', 'plugin.json'));
 const CMD = n => (NO_PLUGIN() ? '/licoes:' : '/licoes-') + n;
-// ---------- os comandos que a pessoa chama (/licoes:status, :remember, :start — os mesmos nomes da Helena) ----------
+
 const lerLog = arq => { try { return fs.readFileSync(arq, 'utf8').split('\n').map(l => ({ t: Date.parse(l.slice(0, 24)), m: l.slice(25) })).filter(x => x.t); } catch { return []; } };
 const dirRotinas = () => process.env.ROTINAS_ESTADO || path.join(os.homedir(), '.claude', 'ganchos', 'rotinas');
 const custoMedio = () => { const c = lerLog(path.join(ESTADO, 'registro.log')).map(x => (x.m.match(/^destilou .*US\$ ([\d.]+)/) || [])[1]).filter(Boolean).map(Number);
-  return c.length ? c.reduce((s, x) => s + x, 0) / c.length : 0.004; };   // 0,004: a média medida no Haiku 5.5 (FERRAMENTAS §17); no 4.5 era 0,045
+  return c.length ? c.reduce((s, x) => s + x, 0) / c.length : 0.004; };
 
-// STATUS: o que há e o que rodou sozinho, lido do disco — sem LLM e sem gastar
 function status(arq) {
   const out = [], dias = n => Date.now() - n * 864e5;
   try { const d = lerLicoes(arq), auto = d.entradas.filter(e => /‹auto›/.test(e.titulo)).length;
@@ -655,7 +578,6 @@ function status(arq) {
   console.log(out.join('\n'));
 }
 
-// SKILLS: as da biblioteca, com o último uso pelo agente (usos.json) — as ‹auto› primeiro, que são as que ninguém escreveu
 function skills() {
   const u = lerJSON(arqUsos(), {}), quando = n => (u[n] ? new Date(u[n]).toLocaleDateString('pt-BR') : 'nunca');
   const l = pastasDaBib().map(n => { const t = fs.readFileSync(path.join(biblioteca(), n, 'SKILL.md'), 'utf8'), k = linhasAprendidas(t).length;
@@ -666,7 +588,6 @@ function skills() {
     : `A biblioteca está vazia (${biblioteca()}). Skill que se repete nos seus pedidos aparece aqui sozinha, com a marca ‹auto›.`);
 }
 
-// LEMBRAR: a lição que a PESSOA dita, sem passar pelo Haiku e sem ‹auto›. JSON na entrada: {titulo, tema, aconteceu, regra}
 function lembrar(arq, entrada, cwd) {
   const nao = m => { console.log(m); process.exitCode = 1; };
   let x; try { x = JSON.parse(entrada); } catch { return nao('--lembrar espera JSON na entrada: {"titulo", "tema", "aconteceu", "regra"}.'); }
@@ -682,25 +603,22 @@ function lembrar(arq, entrada, cwd) {
   console.log(`Lição nº ${nr} gravada em ${arq}. Tirar: ${CMD('forget')} ${nr}`);
 }
 
-// COMEÇAR: os N chats mais novos DESTE projeto, lidos já (a instalação da Helena resume as últimas 10 sessões) — o
-// SessionStart só lê os parados depois da instalação, então o passado fica para este comando. Em segundo plano;
-// o resultado chega como novidade no começo do próximo chat
 const pastaDoProjeto = cwd => path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects', path.resolve(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
 function comecar(n, arq, cwd) {
   n = Math.min(Math.max(parseInt(n, 10) || 5, 1), 20);
   const dir = pastaDoProjeto(cwd);
   let ts = []; try { ts = fs.readdirSync(dir).filter(x => x.endsWith('.jsonl')).map(x => ({ t: path.join(dir, x), m: fs.statSync(path.join(dir, x)).mtimeMs })); } catch {}
-  const lista = ts.filter(x => Date.now() - x.m > 120e3).sort((a, b) => b.m - a.m).slice(0, n);   // o chat de agora (mexeu há < 2 min) fica para o fim dele
+  const lista = ts.filter(x => Date.now() - x.m > 120e3).sort((a, b) => b.m - a.m).slice(0, n);
   if (!lista.length) return console.log(`Nenhum chat anterior deste projeto em ${dir}.`);
   console.log(`Lendo ${lista.length} chat(s) deste projeto em segundo plano — uns US$ ${(lista.length * custoMedio()).toFixed(2)} de Haiku`
     + ' (na assinatura, sai do limite de uso); chat já lido não gasta de novo. O que virar lição aparece no começo do próximo chat e no /licoes:status.');
   const args = [__filename, '--rodar-lista', arq, cwd, ...lista.map(x => x.t)];
-  if (process.env.DESTILAR_ESPERA) cp.spawnSync(process.execPath, args, { stdio: 'ignore', windowsHide: true });   // o --teste espera
+  if (process.env.DESTILAR_ESPERA) cp.spawnSync(process.execPath, args, { stdio: 'ignore', windowsHide: true });
   else cp.spawn(process.execPath, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
 }
 function rodarLista(arq, cwd, ts) {
   let soltar = travar();
-  for (let k = 0; !soltar && k < 30; k++) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000); soltar = travar(); }   // espera a do fim de chat, até 5 min
+  for (let k = 0; !soltar && k < 30; k++) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000); soltar = travar(); }
   if (!soltar) return registrar('comecar: outra destilação rodando há 5 min; saiu');
   try {
     for (const t of ts) { try { destilar(t, cwd, arq); repete(t); } catch (e) { registrar('ERRO comecar ' + e.message); } try { marcarVisto(t, fs.statSync(t).mtimeMs); } catch {} }
@@ -708,11 +626,10 @@ function rodarLista(arq, cwd, ts) {
   } finally { soltar(); }
 }
 
-// ---------- o teste, sem gastar ----------
 function teste() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'destilar-'));
   process.env.DESTILAR_ESTADO = path.join(tmp, 'estado');
-  process.env.DESTILAR_REPETE = '0';                               // as lições primeiro; o que se repete tem o caso dele, no fim
+  process.env.DESTILAR_REPETE = '0';
   process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'cfg');
   const falso = path.join(tmp, 'claude-falso.js');
   fs.writeFileSync(falso, `const fs=require('fs');let i='';process.stdin.on('data',c=>i+=c).on('end',()=>{fs.appendFileSync(process.env.FALSO_LOG,i+'\\n=====\\n');
@@ -732,7 +649,7 @@ function teste() {
   fs.writeFileSync(lic, cabecalho + corpo);
   const original = fs.readFileSync(lic, 'utf8');
   const tr = path.join(tmp, 'chat.jsonl'), msg = (tipo, texto) => JSON.stringify({ type: tipo, message: { role: tipo, content: tipo === 'user' ? texto : [{ type: 'text', text: texto }] } });
-  const conversa = n => Array.from({ length: n }, (_, i) => [msg('user', `pedido ${i} com a chave sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV`), msg('assistant', `feito ${i}`), // segredo-ok — chave falsa do teste
+  const conversa = n => Array.from({ length: n }, (_, i) => [msg('user', `pedido ${i} com a chave sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV`), msg('assistant', `feito ${i}`),
     JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'SAIDA-DE-FERRAMENTA' }] } })].join('\n')).join('\n') + '\n';
   let falhas = 0; const confere = (ok, nome) => { console.log(`${ok ? 'ok  ' : 'FALHOU'} ${nome}`); if (!ok) falhas++; };
 
@@ -791,7 +708,6 @@ function teste() {
   zerar(); respostas('{"grupos":[{"numeros":[5,6],"motivo":"x"}]}', 'SAI1'); filho('--rodar', tr, tmp, '--licoes', lic);
   confere(faxinaEm() === 0, 'o limite acaba no meio da fusão: também tenta de novo no próximo chat');
 
-  // os chats parados: pasta de transcrições com o chat atual, um parado há 2 h, um de 10 min, um de antes da instalação
   const proj = path.join(tmp, 'proj'); fs.mkdirSync(proj);
   const tr2 = n => path.join(proj, n + '.jsonl'), idade = (n, min) => { const t = (Date.now() - min * 60e3) / 1000; fs.utimesSync(tr2(n), t, t); };
   for (const n of ['atual', 'parado', 'recente', 'velho']) fs.writeFileSync(tr2(n), conversa(5));
@@ -805,10 +721,9 @@ function teste() {
   respostas('{"licoes":[]}'); filho('--rodar', tr2('atual'), tmp, '--licoes', lic, '--inicio');
   confere(pedidos().length === 0, 'o parado já lido não se lê de novo');
 
-  // o que se repete: 3 pedidos num chat e 2 noutro (curtos: a destilação de lição pula e não pergunta nada)
   process.env.DESTILAR_REPETE = '1';
   const pedir = (n, k, de = 0) => { const f = path.join(tmp, `rep-${n}.jsonl`); fs.writeFileSync(f, Array.from({ length: k }, (_, i) => [
-    msg('user', `gera o relatório mensal de vendas da loja em PDF ${de + i}, chave sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV`), ...(i ? [] : [msg('user', 'commit e push')]), // segredo-ok — chave falsa do teste
+    msg('user', `gera o relatório mensal de vendas da loja em PDF ${de + i}, chave sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV`), ...(i ? [] : [msg('user', 'commit e push')]),
     JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'node relatorio.js --mes' } }] } })].join('\n')).join('\n') + '\n'); return f; };
   const receita = JSON.stringify({ vale: true, nome: 'Relatório Mensal', descricao: 'gerar o relatório mensal de vendas em pdf', passos: '1. node relatorio.js --mes' });
   respostas(receita); filho('--rodar', pedir('a', 3), tmp, '--licoes', lic);
@@ -825,7 +740,6 @@ function teste() {
   const df = filho('--desfazer', 'relatorio-mensal');
   confere(!fs.existsSync(sk) && !fs.readFileSync(path.join(tmp, 'cfg', 'biblioteca', 'CATALOGO.md'), 'utf8').includes('relatorio-mensal') && /apagada/.test(df.stdout), '--desfazer apaga a skill e a linha do catálogo');
 
-  // a biblioteca que se cuida: uso + Aprendido, podar, juntar, semana, esquecer, listar — e o desfazer de cada um
   process.env.DESTILAR_REPETE = '0';
   const bib = path.join(tmp, 'cfg', 'biblioteca'), skMd = n => path.join(bib, n, 'SKILL.md'), dias = d => new Date(Date.now() - d * 864e5).toLocaleDateString('sv');
   const criar = (n, auto) => { fs.mkdirSync(path.dirname(skMd(n)), { recursive: true });
@@ -886,7 +800,6 @@ function teste() {
   confere(['--desfazer fazer-site aprendido', '--desfazer nova-auto', '--desfazer licao 41', 'FAXINA.md', 'semana'].every(s => ls.includes(s)) && !ls.includes('--desfazer manual-velha\n'),
     '--listar: cada coisa que rodou sozinha, com o comando de desfazer');
 
-  // os COMANDOS: --lembrar, --status, --comecar
   const lem = j => cp.spawnSync(process.execPath, [__filename, '--lembrar', '--licoes', lic], { input: typeof j === 'string' ? j : JSON.stringify(j), encoding: 'utf8' });
   const prox = () => Number(fs.readFileSync(lic, 'utf8').match(/Próximo nº: (\d+)/)[1]), p0 = prox();
   const r1 = lem({ titulo: 'Ditada pela pessoa', tema: '07', aconteceu: 'caso real', regra: 'faça assim' });
@@ -894,7 +807,7 @@ function teste() {
     && /ditada pela pessoa\)\*: caso real/.test(fs.readFileSync(lic, 'utf8')), '--lembrar grava em cima, com o próximo nº, sem ‹auto›');
   const antesL = fs.readFileSync(lic, 'utf8');
   const recusas = [lem({ titulo: 'ditada  pela pessoa', aconteceu: 'x', regra: 'y' }), lem({ titulo: 'Sem caso', regra: 'y' }), lem('não é json'),
-    lem({ titulo: 'Com chave', aconteceu: 'sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV', regra: 'y' })];   // segredo-ok — chave falsa do teste
+    lem({ titulo: 'Com chave', aconteceu: 'sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV', regra: 'y' })];
   confere(recusas.every(r => r.status === 1) && fs.readFileSync(lic, 'utf8') === antesL, '--lembrar recusa título repetido, lição sem caso, entrada que não é JSON e segredo — sem mexer no arquivo');
 
   process.env.ROTINAS_ESTADO = path.join(tmp, 'rotinas'); fs.mkdirSync(process.env.ROTINAS_ESTADO);
@@ -904,7 +817,7 @@ function teste() {
   const st = filho('--status', '--licoes', lic).stdout;
   confere(/Lições próprias: \d+, \d+ ‹auto›/.test(st) && /Biblioteca: \d+ skill/.test(st) && st.includes('Rotinas: dependencias (a cada 7d)') && /US\$ \d+\.\d\d em 7 dias/.test(st)
     && /Último chat lido: /.test(st) && st.includes('uma novidade de teste') && !pedidos().length, '--status: lições, ‹auto›, biblioteca, rotinas, custo do registro.log e novidades, sem chamar o Haiku');
-  fs.mkdirSync(path.join(bib, '_arquivo', 'arquivada-teste'), { recursive: true });   // a velha-auto voltou com o --desfazer poda
+  fs.mkdirSync(path.join(bib, '_arquivo', 'arquivada-teste'), { recursive: true });
   const sb = filho('--skills').stdout;
   confere(/- fazer-site: último uso \d\d\/\d\d\/\d{4}/.test(sb) && /Arquivadas por falta de uso: .*arquivada-teste/.test(sb) && (!/‹auto›/.test(sb) || sb.indexOf('‹auto›') < sb.indexOf('- fazer-site')),
     '--skills: a biblioteca com o último uso, as ‹auto› primeiro, e as arquivadas');
@@ -919,7 +832,6 @@ function teste() {
   const [proj1, pasta1] = process.platform === 'win32' ? ['C:\\Users\\Ana\\OneDrive\\Claude Code\\MEU-SITE', 'C--Users-Ana-OneDrive-Claude-Code-MEU-SITE'] : ['/home/ana/meu site.v2', '-home-ana-meu-site-v2'];
   confere(path.basename(pastaDoProjeto(proj1)) === pasta1, 'a pasta dos chats do projeto: cada caractere fora de [a-zA-Z0-9] vira "-"');
 
-  // o PLUGIN, sem base: a casa de mentira (sem additionalDirectories), e a opção decide
   const guarda = { ...process.env }, casa = path.join(tmp, 'casa');
   Object.assign(process.env, { USERPROFILE: casa, HOME: casa, LICOES_DIR: '', CLAUDE_PLUGIN_ROOT: tmp });
   delete process.env.CLAUDE_PLUGIN_OPTION_DESTILAR;
@@ -940,7 +852,6 @@ function teste() {
   console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTudo certo.'); process.exitCode = falhas ? 1 : 0;
 }
 
-// ---------- entrada ----------
 const a = process.argv.slice(2), opc = n => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : undefined; };
 if (a[0] === '--teste') teste();
 else if (a[0] === '--rodar') rodar(a[1], a[2], opc('--licoes'), a.includes('--inicio'));
@@ -958,12 +869,12 @@ else if (['--desfazer', '--esquecer', '--listar', '--semana', '--status', '--lem
 }
 else if (a[0] === '--faxina') { const s = travar(); try { faxina(opc('--licoes'), true); } catch (e) { registrar('ERRO ' + e.message); } finally { s && s(); } }
 else if (!process.env.DESTILAR_FILHO) {
-  // o gancho: lê a entrada, solta o trabalho em segundo plano e devolve o controle na hora
+
   let i = ''; process.stdin.on('data', c => (i += c)).on('end', () => {
     let e = {}; try { e = JSON.parse(i); } catch {}
     if (!e.transcript_path) return;
-    if (process.env.CLAUDE_PLUGIN_ROOT && !/^(true|1|sim)$/i.test(process.env.CLAUDE_PLUGIN_OPTION_DESTILAR || '')) return;   // plugin, opção desligada
-    registrar(`chamado por ${e.hook_event_name || '?'}${e.reason ? ' (' + e.reason + ')' : ''} ${path.basename(e.transcript_path)}`);   // qual evento chamou: prova se o app dispara o SessionEnd
+    if (process.env.CLAUDE_PLUGIN_ROOT && !/^(true|1|sim)$/i.test(process.env.CLAUDE_PLUGIN_OPTION_DESTILAR || '')) return;
+    registrar(`chamado por ${e.hook_event_name || '?'}${e.reason ? ' (' + e.reason + ')' : ''} ${path.basename(e.transcript_path)}`);
     const inicio = e.hook_event_name === 'SessionStart' ? ['--inicio'] : [];
     cp.spawn(process.execPath, [__filename, '--rodar', e.transcript_path, e.cwd || '', ...inicio], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   });

@@ -1,20 +1,4 @@
 #!/usr/bin/env node
-// Rotinas — gancho SessionEnd do Claude Code (base LIÇÕES GERAIS, FERRAMENTAS §18).
-//
-// Um pedido que o Haiku roda SOZINHO de tempos em tempos ("toda segunda, veja se as dependências deste projeto têm
-// versão nova"), SÓ LENDO e com teto de gasto. Sem agendador e sem nada ligado o tempo todo: quando um chat termina,
-// este gancho olha se alguma rotina venceu e, se sim, se reabre em segundo plano e a roda (o chat fecha sem esperar).
-// A rotina só lê (arquivos e web: --tools Read,Grep,Glob,WebSearch,WebFetch). O que pede decisão ou ação da pessoa
-// ela NÃO faz: escreve "PRECISA DE VOCÊ: …", que vira novidade no começo do próximo chat (o chat-parado mostra) e linha
-// em PRECISA-DE-VOCE.md. Cada rodada se acrescenta em ~/.claude/ganchos/rotinas/<nome>.md, com o custo.
-//
-// Ideia: routines.py do vijcoelho/project-helena (MIT, commit c356888, CREDITOS.md). Daqui: Node puro como os outros
-// ganchos, a saída fora de cofre do Obsidian (num .md por rotina), o segredo mascarado com a lista do segredo-no-commit.
-//
-// Ligar: ~/.claude/settings.json → hooks.SessionEnd, "node <caminho>/rotinas.js". Sem rotina cadastrada, não faz nada.
-//   node rotinas.js --nova <nome> <cada: 12h|1d|7d> "<pedido>" [--projeto <pasta>] [--teto 0.25] [--meta "<objetivo>"]
-//   node rotinas.js --listar  ·  --tirar <nome>  ·  --agora <nome> (roda já, ignorando o "cada")
-// Testar sem gastar:  node rotinas.js --teste   (um `claude` de mentira, numa pasta temporária)
 
 'use strict';
 const fs = process.getBuiltinModule('fs'), path = process.getBuiltinModule('path'),
@@ -23,13 +7,12 @@ const fs = process.getBuiltinModule('fs'), path = process.getBuiltinModule('path
 const ESTADO = () => process.env.ROTINAS_ESTADO || path.join(os.homedir(), '.claude', 'ganchos', 'rotinas');
 const NOVIDADES = () => path.join(process.env.DESTILAR_ESTADO || path.join(os.homedir(), '.claude', 'ganchos', 'destilar'), 'novidades.json');
 const CLAUDE = () => process.env.ROTINAS_CLAUDE || 'claude';
-const SO_LER = 'Read,Grep,Glob,WebSearch,WebFetch';                  // a rotina nunca muda nada
-const TETO_PADRAO = 0.25;   // medido: uma rodada com busca na web, US$ 0,15; teto estourado = gasto sem resposta
+const SO_LER = 'Read,Grep,Glob,WebSearch,WebFetch';
+const TETO_PADRAO = 0.25;
 const REGRAS = meta => `\n\nVocê está rodando SOZINHO, como rotina agendada. Só pode LER (arquivos e web); nunca tente mudar arquivo nem rodar
 comando. ${meta ? `Esta rotina trabalha por um objetivo: ${meta}\nTermine com uma linha começando com "PROGRESSO:" dizendo onde o objetivo está agora.\n` : ''}O que pedir
 decisão ou ação da pessoa, NÃO faça: escreva uma linha por item começando com "PRECISA DE VOCÊ:". Responda em menos de 30 linhas.`;
 
-// a mesma lista do segredo-no-commit.js (FERRAMENTAS §16): a resposta é mascarada antes de ir para o disco
 const SEGREDO = new RegExp([
   String.raw`\bsk[_-](live_|test_|ant-|proj-)?[A-Za-z0-9_-]{16,}`, String.raw`\b(pk|rk)_(live|test)_[A-Za-z0-9]{10,}`,
   String.raw`\bwhsec_[A-Za-z0-9]{20,}`, String.raw`\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}`, String.raw`\bAIza[0-9A-Za-z_-]{30,}`,
@@ -54,7 +37,7 @@ function novidade(t) {
 }
 
 function rodar(r, todas) {
-  r.ultima = Date.now(); gravar(todas);                              // marcada ANTES da chamada lenta: dois chats não rodam a mesma
+  r.ultima = Date.now(); gravar(todas);
   const flags = `-p --model haiku --output-format json --tools "${SO_LER}" --allowedTools "${SO_LER}" --max-budget-usd ${Number(r.teto) || TETO_PADRAO} `
     + '--no-session-persistence --strict-mcp-config --disable-slash-commands --setting-sources project';
   const cwd = r.projeto && fs.existsSync(r.projeto) ? r.projeto : os.homedir();
@@ -101,7 +84,6 @@ function listar() {
     + `${r.projeto ? `, projeto ${path.basename(r.projeto)}` : ''}${r.meta ? `, objetivo: ${r.meta}` : ''}\n  ${r.pedido.slice(0, 150)}\n  saída: ${path.join(ESTADO(), r.nome + '.md')}`);
 }
 
-// ---------- o teste, sem gastar ----------
 function teste() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rotinas-'));
   const falso = path.join(tmp, 'claude-falso.js'), log = path.join(tmp, 'log');
@@ -124,7 +106,7 @@ function teste() {
   filho(['--nova', 'noticias', '1d', 'resuma as novidades do Claude Code', '--meta', 'saber quando sair a versão 3']);
   confere(/dependencias: a cada 7d, até US\$ 0.05, última nunca, projeto proj/.test(filho(['--listar']).stdout), 'grava com o nome limpo, o teto e o projeto');
 
-  filho(['--vencidas'], { FALSO_RESULT: '**PRECISA DE VOCÊ:** atualizar o express 4 → 5 (quebra a API)\nO resto está em dia. Chave sk_live_' + 'ABCDEFGHIJKLMNOPQRSTUVWX vista no log.' }); // segredo-ok — chave falsa do teste
+  filho(['--vencidas'], { FALSO_RESULT: '**PRECISA DE VOCÊ:** atualizar o express 4 → 5 (quebra a API)\nO resto está em dia. Chave sk_live_' + 'ABCDEFGHIJKLMNOPQRSTUVWX vista no log.' });
   const c = chamadas(), dep = c.find(x => /dependências/.test(x.pedido)) || { args: [] }, a = dep.args.join(' ');
   confere(c.length === 2, 'as duas nunca rodaram: as duas vencidas rodam');
   confere(/--tools Read,Grep,Glob,WebSearch,WebFetch/.test(a) && /--allowedTools Read,Grep,Glob,WebSearch,WebFetch/.test(a) && /--max-budget-usd 0\.05/.test(a) && /--model haiku/.test(a),
@@ -142,7 +124,6 @@ function teste() {
   filho(['--agora', 'noticias'], { FALSO_FALHA: '1' });
   confere(chamadas().length === 1 && /sem resposta: error_max_budget_usd/.test(ler('estado/noticias.md')), '--agora roda já; o teto estourado fica anotado, sem quebrar');
 
-  // o gancho: com rotina vencida, solta o trabalho em segundo plano; dentro de uma rotina (filho), não faz nada
   fs.unlinkSync(log);
   const lista = JSON.parse(ler('estado/rotinas.json')); lista[0].ultima = 0; fs.writeFileSync(path.join(tmp, 'estado', 'rotinas.json'), JSON.stringify(lista));
   cp.spawnSync(process.execPath, [__filename], { input: '{"hook_event_name":"SessionEnd"}', encoding: 'utf8', env: { ...env, ROTINAS_FILHO: '1' } });
@@ -156,7 +137,6 @@ function teste() {
   console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTudo certo.'); process.exitCode = falhas ? 1 : 0;
 }
 
-// ---------- entrada ----------
 const a = process.argv.slice(2);
 const erro = f => { try { f(); } catch (e) { console.error(e.message); process.exitCode = 1; } };
 if (a[0] === '--teste') teste();
@@ -166,7 +146,7 @@ else if (a[0] === '--listar') listar();
 else if (a[0] === '--tirar') { const t = lerJSON(arqRotinas(), []); gravar(t.filter(r => r.nome !== a[1])); console.log(t.some(r => r.nome === a[1]) ? `Rotina "${a[1]}" removida.` : `Não há rotina "${a[1]}".`); }
 else if (a[0] === '--agora') { const t = lerJSON(arqRotinas(), []), r = t.find(x => x.nome === a[1]); console.log(r ? rodar(r, t) : `Não há rotina "${a[1]}".`); }
 else if (!process.env.ROTINAS_FILHO) {
-  // o gancho: só abre o processo de fundo se alguma rotina venceu (sem rotina, custa um readFile)
+
   let i = ''; process.stdin.on('data', c => (i += c)).on('end', () => {
     const t = lerJSON(arqRotinas(), []);
     const vencida = t.some(r => { try { return Date.now() - (r.ultima || 0) >= segundos(r.cada) * 1000; } catch { return false; } });

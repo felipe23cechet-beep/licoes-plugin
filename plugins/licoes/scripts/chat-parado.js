@@ -1,39 +1,15 @@
 #!/usr/bin/env node
-// Trava de CHAT PARADO — gancho UserPromptSubmit do Claude Code (base LIÇÕES GERAIS, 09 §9.15).
-//
-// Barra UMA vez a mensagem que chega num chat GRANDE depois que o cache venceu, e diz quanto
-// custaria continuar ali. Mandou de novo em até 30 minutos? Passa. Comando com "/" sempre passa.
-// Não custa contexto: quando não barra, não escreve nada. Se algo falhar aqui dentro, deixa passar.
-// E o outro lado: a PRIMEIRA mensagem de um chat novo é só "continue"? Mostra onde o chat anterior do
-// projeto parou (modelos/fim-do-chat.js da base, ~4 mil tokens, uma vez) — o "continue" basta.
-// E na PRIMEIRA mensagem de todo chat de projeto equipado: a base mudou desde a destilação (VERSAO.md
-// contra o cabeçalho do LICOES-APLICADAS.md, LEIA-PRIMEIRO §5)? Diz em ~60 tokens. Igual, não escreve nada.
-// E na PRIMEIRA mensagem de todo chat: qual máquina é esta, lida de ~/.claude/maquina.txt, e onde estão os caminhos
-// DELA (~90 tokens; sem o arquivo, nada) — CLAUDE.md escritos numa máquina citavam, na outra, caminho que lá não existe (27/09/2026).
-// E, se o projeto é Git com remoto, o próprio gancho roda o git pull e lembra que o push é do agente (~70 tokens; sem Git, nada).
-// E o "onde paramos" do PROGRESSO.md, o projeto num relance pelo Git e o que o destilar-licoes gravou sozinho (07/10/2026):
-// TODO o começo de chat mora na chatNovo, abaixo — começo de chat novo entra lá, não num gancho a mais.
-// Na NUVEM (CLAUDE_CODE_REMOTE=true), no lugar da máquina e do pull: o que a tela de lá não tem, e o contorno (~500 tokens).
-// Existe porque a ordem escrita falhou: um agente leu o PROGRESSO.md e nunca abriu o destilado (23/09/2026).
-// E o chat GRANDE que NÃO parou: passou do limiar? Uma nota de ~90 tokens manda o agente seguir até o fim do que foi
-// decidido e SÓ ENTÃO sugerir chat novo, com o prompt pronto (pedido do dono, 23/09/2026; "sem parar pelo tamanho",
-// 28/09/2026) — o agente não enxerga o tamanho do próprio chat; o gancho enxerga.
-// E o chat que parou no LIMITE DE USO: a continuação automática passa calada até 1 h depois da volta do limite (09 §9.8).
-//
-// Testar sem barrar nada:  node chat-parado.js --teste "<caminho do .jsonl da sessão>"
 
 const fs = require('fs'), path = require('path'), os = require('os');
 
-const LINGUA = 'pt';        // 'pt' ou 'en' — o agente acerta ao copiar, pelo idioma da pessoa
-const PARADO_MIN = +(process.env.CHAT_PARADO_MIN || 60);        // prazo do cache: 60 na assinatura; 5 usando créditos extras
-// O limiar é da CONVERSA, não do chat: desconta a parte fixa com que o próprio chat nasceu, que um chat novo também
-// paga (03/10/2026: de 35 a 76 mil conforme o projeto; um chat de 93 mil com 59 de parte fixa custava ~11 mil a mais
-// que um novo, e o de 100 mil fixo deixava passar o de 93 com 58 de conversa). Era 100 mil do chat inteiro (09 §9.15).
+const LINGUA = 'pt';
+const PARADO_MIN = +(process.env.CHAT_PARADO_MIN || 60);
+
 const CONVERSA = +(process.env.CHAT_PARADO_TOKENS || 50000);
 const INSISTIU_MIN = 30;
-const CONTINUE = /^(continu|segue|siga|prossig|retom|go on|keep going|carry on|resume)/i;     // até 60 caracteres
+const CONTINUE = /^(continu|segue|siga|prossig|retom|go on|keep going|carry on|resume)/i;
 
-function parteFixa(arq) {                                            // o contexto da 1ª resposta do chat: o que ele já nasceu com
+function parteFixa(arq) {
   const fd = fs.openSync(arq, 'r'), n = Math.min(fs.fstatSync(fd).size, 2 << 20);
   const buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, 0); fs.closeSync(fd);
   for (const l of buf.toString('utf8').split('\n')) {
@@ -47,7 +23,7 @@ function parteFixa(arq) {                                            // o contex
 }
 
 function ultimaResposta(arq) {
-  // só o fim do arquivo: o registro de uma sessão longa passa de 50 MB
+
   const fd = fs.openSync(arq, 'r'), tam = fs.fstatSync(fd).size, n = Math.min(tam, 4 << 20);
   const buf = Buffer.alloc(n); fs.readSync(fd, buf, 0, n, tam - n); fs.closeSync(fd);
   let limite;
@@ -55,7 +31,7 @@ function ultimaResposta(arq) {
     if (!l.includes('"usage"')) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
     if (o.type !== 'assistant' || o.isSidechain || !o.message || !o.message.usage) continue;
-    // o chat parou no LIMITE DE USO: a sessão espera e manda sozinha um "continue" fixo — barrá-lo cancela a espera (09 §9.8)
+
     if (o.error === 'rate_limit') { if (limite === undefined) limite = ((o.quotaLimits || {}).resetsAt || 0) * 1000; continue; }
     const u = o.message.usage;
     const contexto = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
@@ -112,15 +88,15 @@ ${txt}
 `;
 }
 
-function grande(mil, base) {                                             // chat grande, ainda em uso: só uma nota ao agente
+function grande(mil, base) {
   return LINGUA === 'en'
     ? `[chat-parado hook] This chat already holds ${mil}k tokens (${mil - base}k of conversation over the ${base}k it started with). Do what the message asks. The size is NOT a reason to stop, cut short or leave an item for another chat: a decided list goes to the end in this chat (the conversation compacts itself near the limit). Only when EVERYTHING decided is done, say in the reply that the next task is cheaper in a new chat — every step here re-reads the ${mil}k, against the ~${base}k a new chat starts with — and hand over the ready prompt.`
     : `[gancho chat-parado] Este chat já tem ${mil} mil tokens (${mil - base} mil de conversa sobre os ${base} mil com que nasceu). Faça o que a mensagem pede. O tamanho NÃO é motivo para parar, encurtar nem deixar item para outro chat: lista decidida vai até o fim neste chat (a conversa se resume sozinha perto do limite). Só quando TUDO o que foi decidido acabar, diga na resposta que a próxima tarefa sai mais barata num chat novo — cada passo aqui relê os ${mil} mil, contra os ~${base} mil com que um chat novo começa — e entregue o prompt pronto — com a frase do modelo e do esforço para o chat novo logo ACIMA do bloco (08 §8.3, "Quando dizer, qual dizer").`;
 }
 
-function acharPasta(cwd) {                                           // a base: LICOES_DIR, ou additionalDirectories
+function acharPasta(cwd) {
   const tem = d => d && fs.existsSync(path.join(d, 'modelos', 'fim-do-chat.js'));
-  // a pasta da base, ou uma subpasta dela — quem aponta a pasta-mãe (com as versões dentro) também acha (25/09/2026)
+
   const ok = d => { if (tem(d)) return d; try { for (const s of fs.readdirSync(d).sort().reverse()) if (tem(path.join(d, s))) return path.join(d, s); } catch {} return null; };
   const e = ok(process.env.LICOES_DIR); if (e) return e;
   const cands = [path.join(os.homedir(), '.claude', 'settings.json')];
@@ -132,7 +108,7 @@ function acharPasta(cwd) {                                           // a base: 
 }
 
 function ondeParou(e, chegou) {
-  // sem a base, o do PLUGIN (o montar-plugin põe o fim-do-chat.js em ../modelos/): antes, ali o "continue" ficava mudo (07/10/2026)
+
   const base = acharPasta(e.cwd), fim = path.join(base || path.join(__dirname, '..'), 'modelos', 'fim-do-chat.js');
   if (!fs.existsSync(fim)) return;
   const saida = require('child_process').execFileSync(process.execPath, [fim, '--pasta', e.cwd || process.cwd()],
@@ -145,8 +121,6 @@ function ondeParou(e, chegou) {
       : '\n⚠️ Esse chat é DESTA máquina e é MAIS VELHO que os commits que o pull acabou de trazer (lista acima): o trabalho seguiu em outro lugar. Retome pelo estado do Git (arquivo de estado, handoff), não por este chat.'));
 }
 
-// O cabeçalho do LICOES-APLICADAS.md é versionado: a atualização feita numa branch sem merge não aparece na
-// branch atual, e a pergunta voltava à toa (03/10/2026). Lê o mesmo arquivo nas OUTRAS branches, locais e remotas.
 function cabecalhosNasBranches(cwd) {
   const cp = require('child_process'), git = a => cp.execFileSync('git', a, { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   const arq = git(['rev-parse', '--show-prefix']).trim() + 'LICOES-APLICADAS.md', out = [];
@@ -155,9 +129,9 @@ function cabecalhosNasBranches(cwd) {
   return out;
 }
 
-function baseMudou(e) {                                             // LEIA-PRIMEIRO §5, sem depender de o agente ler
+function baseMudou(e) {
   const cwd = e.cwd || process.cwd(), apl = path.join(cwd, 'LICOES-APLICADAS.md');
-  if (!fs.existsSync(apl)) return;                                   // projeto não equipado: nada a comparar
+  if (!fs.existsSync(apl)) return;
   const base = acharPasta(cwd); if (!base) return;
   const cab = fs.readFileSync(apl, 'utf8');
   const versao = (fs.readFileSync(path.join(base, 'VERSAO.md'), 'utf8').match(/^\s*(\d+(?:\.\d+)+ · \d{4}-\d{2}-\d{2})/m) || [])[1];
@@ -167,16 +141,16 @@ function baseMudou(e) {                                             // LEIA-PRIM
   try { for (const m of fs.readFileSync(path.join(base, 'meu', 'LICOES-PROPRIAS.md'), 'utf8').matchAll(/‹nº (\d+)›/g)) maior = Math.max(maior, +m[1]); } catch {}
   const b = base.replace(/\\/g, '/'), linhas = [];
   let outras = [];
-  const mudou = versao && destilado && versao !== destilado;     // "Atualização adiada" não vale mais (05/10/2026): atualiza sempre
+  const mudou = versao && destilado && versao !== destilado;
   const precisa = mudou || (visto >= 0 && maior > visto);
-  if (precisa) try { outras = cabecalhosNasBranches(cwd); } catch {}                     // sem Git, segue como antes
+  if (precisa) try { outras = cabecalhosNasBranches(cwd); } catch {}
   const ler = (c, re) => (c.match(re) || [])[1];
   const naBranch = outras.find(o => ler(o.cab, /Destilado contra a versão:\s*(\d+(?:\.\d+)+ · \d{4}-\d{2}-\d{2})/) === versao);
   if (mudou && naBranch)
     linhas.push(LINGUA === 'en'
       ? `The LIÇÕES GERAIS base is at ${versao}, and this branch was distilled against ${destilado} — but the update to ${versao} is already done on branch ${naBranch.ref}, waiting for the merge. Do NOT update again: say so in one line and go on.`
       : `A base de LIÇÕES GERAIS está em ${versao} e esta branch foi destilada contra ${destilado} — mas a atualização para ${versao} já está feita na branch ${naBranch.ref}, esperando o merge. NÃO atualize de novo: diga isso em uma linha e siga.`);
-  else if (mudou)   // ATUALIZAR §1: sem perguntar (decisão do dono, 05/10/2026 — antes, "agora ou depois")
+  else if (mudou)
     linhas.push(LINGUA === 'en'
       ? `The LIÇÕES GERAIS base changed: it is at ${versao}, this project was distilled against ${destilado}. Before the task, UPDATE WITHOUT ASKING: ${b}/ATUALIZAR.md §3 onward (close an open block first; delete any "Atualização adiada" line). At the end of your answer, ONE line only: "The lessons folder was updated." — nothing else about it. Say what changed only if the person asks.`
       : `A base de LIÇÕES GERAIS mudou: está em ${versao}, e este projeto foi destilado contra ${destilado}. Antes da tarefa, ATUALIZE SEM PERGUNTAR: ${b}/ATUALIZAR.md §3 em diante (feche antes o bloco aberto; apague a linha "Atualização adiada", se houver). No fim da resposta, UMA linha só: "A pasta de lições foi atualizada." — e mais nada sobre ela. O que mudou, só se a pessoa perguntar.`);
@@ -192,24 +166,22 @@ function baseMudou(e) {                                             // LEIA-PRIM
   if (linhas.length) console.log('[gancho chat-parado] ' + linhas.join('\n'));
 }
 
-function maquina() {                                                 // qual computador é este (pedido do dono, 25/09/2026)
-  // ~/.claude/maquina.txt NÃO viaja pelo OneDrive: cada máquina tem o seu. Sem o arquivo, cala (quem tem uma máquina só).
+function maquina() {
+
   const n = fs.readFileSync(path.join(os.homedir(), '.claude', 'maquina.txt'), 'utf8').trim(); if (!n) return;
   console.log(LINGUA === 'en'
     ? `[chat-parado hook] This computer: ${n}. Chat history and settings.json are THIS computer's; work done on the other one is known only through PROGRESSO.md. A path in a file written on the other computer may not exist here: this computer's paths are in the "Projects" table of the lessons folder's meu/PERFIL.md — use those, and a project missing there is a line to add. Before handing over a new-chat prompt, leave everything ready for the OTHER computer: what the next chat needs in a file that travels, commit and push done, and what changed only here noted in the state file (08 §8.3).`
     : `[gancho chat-parado] Esta máquina: ${n}. O histórico de chats e o settings.json são DESTA máquina; o que foi feito na outra, só pelo PROGRESSO.md. Caminho escrito na outra máquina pode não existir aqui: os DESTA estão na tabela "Projetos" do meu/PERFIL.md da pasta de lições — use esses; projeto que falta lá é linha a acrescentar. Antes de entregar prompt de chat novo, deixe tudo pronto para a OUTRA máquina: o que o próximo chat precisa num arquivo que viaja, commit e push feitos, e o que mudou só nesta anotado no arquivo de estado (08 §8.3).`);
 }
 
-function sincronizar(e) {                                            // git pull SEM depender do agente (pedido do dono, 26/09/2026)
-  // Projeto com Git e remoto: o gancho faz o pull e lembra que o push é do agente. O CLAUDE.md do projeto
-  // só leva o "Fluxo Git" se nasceu do modelo — um projeto montado às pressas ficou sem, e o dono fez o push à mão.
+function sincronizar(e) {
+
   const cwd = e.cwd || process.cwd(), cp = require('child_process');
   const git = (...a) => cp.execFileSync('git', a, { cwd, timeout: 7000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).trim();       // nunca espera senha: sem login, falha e avisa
-  try { git('rev-parse', '--is-inside-work-tree'); if (!git('remote')) return; } catch { return; }   // sem Git ou sem remoto: cala
-  // Pull sozinho é mexer no projeto sem pedir, para quem já programa: pergunta 1 vez (decisão do dono, 01/10/2026).
-  // A resposta mora no git config: a do projeto, ou a --global, que vale para todos os projetos daquela máquina.
-  let pode = ''; try { pode = git('config', '--get', 'licoes.pull'); } catch { /* ninguém respondeu ainda */ }
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).trim();
+  try { git('rev-parse', '--is-inside-work-tree'); if (!git('remote')) return; } catch { return; }
+
+  let pode = ''; try { pode = git('config', '--get', 'licoes.pull'); } catch {  }
   if (pode !== 'true') {
     console.log(pode === 'false'
       ? (LINGUA === 'en'
@@ -221,10 +193,9 @@ function sincronizar(e) {                                            // git pull
     return;
   }
   let r, antes = '', novos = '';
-  try { antes = git('rev-parse', 'HEAD'); } catch { /* repositório sem commit */ }
+  try { antes = git('rev-parse', 'HEAD'); } catch {  }
   try { const o = git('pull', '--ff-only'); r = /up to date|atualizado/i.test(o) ? (LINGUA === 'en' ? 'already up to date' : 'já estava em dia') : (LINGUA === 'en' ? 'brought new commits' : 'trouxe commits novos');
-    // Os commits que chegaram, com data e autor: o "fim do chat" do ondeParou é DESTA máquina e pode ser mais velho
-    // que eles — o dono teve de perguntar "viu o que foi feito no notebook hoje?" (05/10/2026).
+
     if (antes) novos = git('log', '--format=%h %ad %an %s', '--date=format:%d/%m %H:%M', '-8', antes + '..HEAD'); }
   catch (x) { r = (LINGUA === 'en' ? 'FAILED — tell the person in one line and fix it before touching files: ' : 'FALHOU — diga à pessoa numa linha e resolva antes de encostar em arquivo: ') + String(x.stderr || x.message).trim().split(/\r?\n/).slice(-2).join(' ').slice(0, 200); }
   console.log(LINGUA === 'en'
@@ -236,10 +207,8 @@ function sincronizar(e) {                                            // git pull
   return !!novos;
 }
 
-function nuvem(e) {                                                  // sessão na nuvem: o que a tela não tem (09 §9.7)
-  // O dono se perdeu na 1ª sessão na nuvem: clicou no nome do arquivo e nada abriu, colou lá um comando que era do
-  // computador, não achou na máquina o que a nuvem fez (26/09/2026). No lugar do pull (clone novo, e o branch da
-  // sessão pode nem ter upstream), o aviso — ~500 tokens, uma vez por chat. Mudou a tabela do 09 §9.7? Mude aqui.
+function nuvem(e) {
+
   const cwd = e.cwd || process.cwd(), cp = require('child_process');
   const git = (...a) => { try { return cp.execFileSync('git', a, { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
   const br = git('branch', '--show-current') || '?';
@@ -259,39 +228,32 @@ function nuvem(e) {                                                  // sessão 
 5. Chat novo aqui = sessão nova pela barra lateral, de um clone novo do GitHub: commit e push antes, e o prompt de retomada diz o repositório e o branch a escolher. Sessão parada perde a máquina, e o que não teve push some.`);
 }
 
-// O que mora no ~/.claude NÃO viaja pelo OneDrive: os ganchos e o CLAUDE.md global de cada máquina ficavam velhos na
-// outra, e só a pessoa lembrava de copiar (pedido do dono, 04/10/2026: "ir ao notebook sem te pedir"). Na 1ª mensagem de
-// cada chat: (1) gancho de ~/.claude/ganchos/ com cópia MAIS NOVA em modelos/ganchos/ da base → copia, com backup;
-// só os que já estão instalados — instalar gancho novo continua sendo escolha da pessoa. Gancho em SUBPASTA (tela/) também,
-// arquivo por arquivo, sem o node_modules; o package.json mudou → o aviso pede o npm install (06/10/2026: a tela/ ficava velha). (2) Se existir meu/CLAUDE-global.md
-// na base, ele e o ~/.claude/CLAUDE.md desta máquina ficam iguais: o lado que mudou desde a última conferência vence;
-// os dois mudaram → avisa e não mexe. Iguais, não escreve nada.
 function emDia(e) {
   const base = acharPasta(e.cwd); if (!base) return;
   const casa = path.join(os.homedir(), '.claude'), hoje = new Date().toLocaleDateString('sv'), feito = [];
   const ler = f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
   const copiar = (de, para) => { const bak = para + '.bak-' + hoje; if (fs.existsSync(para) && !fs.existsSync(bak)) fs.copyFileSync(para, bak); fs.copyFileSync(de, para); };
   const dirG = path.join(base, 'modelos', 'ganchos');
-  const arqs = [], par = (de, ...para) => arqs.push([de, path.join(casa, ...para), para.slice(1).join('/')]);   // nome no aviso
+  const arqs = [], par = (de, ...para) => arqs.push([de, path.join(casa, ...para), para.slice(1).join('/')]);
   for (const f of fs.readdirSync(dirG)) {
     if (f.endsWith('.js')) par(path.join(dirG, f), 'ganchos', f);
     else if (fs.statSync(path.join(dirG, f)).isDirectory() && fs.existsSync(path.join(casa, 'ganchos', f)))
       for (const g of fs.readdirSync(path.join(dirG, f))) if (/\.(m?js|json)$/.test(g) && g !== 'package-lock.json') par(path.join(dirG, f, g), 'ganchos', f, g);
   }
-  // a biblioteca (o script lê o SKILL.md ao lado) e as skills de comando (licoes-status…): também só as já instaladas
+
   for (const g of ['biblioteca.js', 'SKILL.md']) par(path.join(base, 'modelos', 'biblioteca', g), 'ganchos', 'biblioteca', g);
   try { for (const c of fs.readdirSync(path.join(base, 'modelos', 'comandos'))) par(path.join(base, 'modelos', 'comandos', c, 'SKILL.md'), 'skills', c, 'SKILL.md'); } catch {}
   for (const [de, para, nome] of arqs) {
     const a = ler(para);
     if (a === null || !fs.existsSync(de) || a === ler(de) || fs.statSync(de).mtimeMs <= fs.statSync(para).mtimeMs) continue;
-    // script com erro de sintaxe não entra: a base se edita no meio do trabalho, e o gancho quebrado para calado
+
     if (/\.m?js$/.test(de) && require('child_process').spawnSync(process.execPath, ['--check', de], { windowsHide: true }).status !== 0) { feito.push('!quebrado:' + nome); continue; }
     copiar(de, para); feito.push(nome);
   }
   const mestre = path.join(base, 'meu', 'CLAUDE-global.md'), local = path.join(casa, 'CLAUDE.md'), marca = path.join(casa, 'claude-global.conferido');
   const m = ler(mestre), l = ler(local);
   if (m !== null && m !== l) {
-    const visto = ler(marca);                                       // sem marca (1ª vez nesta máquina): vence o mais recente
+    const visto = ler(marca);
     const subir = l !== null && (visto === null ? fs.statSync(local).mtimeMs > fs.statSync(mestre).mtimeMs : l !== visto);
     if (visto !== null && subir && m !== visto) feito.push('!conflito');
     else if (subir) { copiar(local, mestre); feito.push('CLAUDE.md global → meu/CLAUDE-global.md'); }
@@ -306,8 +268,6 @@ function emDia(e) {
     : (lista.length ? `[gancho chat-parado] Pus esta máquina em dia com a pasta de lições: ${lista.join(', ')} (backup .bak-${hoje}${gancho ? '; gancho vale da próxima mensagem' : ''}). Diga em uma linha no resumo final.` : '[gancho chat-parado]') + (npm.length ? ` O package.json mudou: rode npm install em ${npm.join(', ')} e diga em uma linha.` : '') + (conflito ? ' ⚠️ O ~/.claude/CLAUDE.md e o meu/CLAUDE-global.md MUDARAM OS DOIS desde a última conferência: junte os dois à mão, grave o resultado nos dois arquivos e diga em uma linha.' : '') + (quebrado.length ? ` ⚠️ Não copiei, a cópia da pasta de lições tem erro de sintaxe (node --check): ${quebrado.join(', ')} — segue a antiga; conserte em modelos/ e diga em uma linha.` : ''));
 }
 
-// O "onde paramos" do PROGRESSO.md, sem o agente abrir o arquivo (ideia: start.js do project-helena, MIT; pedido do
-// dono, 07/10/2026: "se houver economia já é bom de fazer"). Só o começo da seção e o primeiro bloco dela, até 60 linhas.
 function estado(e) {
   const arq = path.join(e.cwd || process.cwd(), 'PROGRESSO.md');
   const L = fs.readFileSync(arq, 'utf8').replace(/\r/g, '').split('\n');
@@ -323,7 +283,6 @@ function estado(e) {
     : `[gancho chat-parado] O "onde paramos" do PROGRESSO.md (linhas ${i + 1}–${fim}), já aqui — não releia este trecho; do resto, abra só a seção que a tarefa pedir:\n${txt}`);
 }
 
-// Um retrato do projeto pelo Git, para não reexplorar a pasta a cada chat (start.js do project-helena, MIT). Só na raiz.
 function retrato(e) {
   const cwd = e.cwd || process.cwd(), cp = require('child_process');
   const git = a => cp.execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 1500, maxBuffer: 32 << 20 });
@@ -336,7 +295,6 @@ function retrato(e) {
   console.log((LINGUA === 'en' ? '[chat-parado hook] Project at a glance — use it before exploring:\n' : '[gancho chat-parado] O projeto num relance — use antes de explorar:\n') + L.join('\n'));
 }
 
-// O que o destilar-licoes gravou sozinho desde o último chat: a pessoa fica sabendo, uma vez.
 function novidades() {
   const arq = path.join(process.env.DESTILAR_ESTADO || path.join(os.homedir(), '.claude', 'ganchos', 'destilar'), 'novidades.json');
   const lista = JSON.parse(fs.readFileSync(arq, 'utf8')); if (!lista.length) return;
@@ -345,18 +303,12 @@ function novidades() {
     : '[gancho chat-parado] Feito sozinho desde o último chat — diga à pessoa no resumo final, uma linha cada:\n- ') + lista.join('\n- '));
 }
 
-// Só o que usa (COMECAR-PROJETO-NOVO item 6): o corte roda em segundo plano, 1× por dia, só com o "Sim" no meu/PERFIL.md;
-// a devolução, a cada mensagem. Ligado aqui pelo sim do dono no chat (07/10/2026) — o agente não liga gancho sozinho.
 const SO = path.join(__dirname, 'so-o-que-usa.js');
 function soOQueUsa(e) {
   const base = acharPasta(e.cwd); if (!base || !fs.existsSync(SO)) return;
   require('child_process').spawn(process.execPath, [SO, '--rodar', base], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
 }
 
-// Limite do plano em 80% e 95% (ideia do limits.js da Helena, MIT): o número vem da barra de status (modelos/statusline.js),
-// que o grava em limites.json; no app, que não tem barra, quem grava é o mod passa-bastao (FERRAMENTAS §14). Sem os dois, fica
-// calado. Um aviso por nível, por JANELA do limite (não por chat: o passa-bastão abre chat novo a toda hora); à pessoa, só o de
-// 95% — a barra e o /panel já mostram o número (09/10/2026).
 const LIMITES = process.env.LIMITES_ARQ || path.join(os.homedir(), '.claude', 'ganchos', 'limites.json');
 function limite(e) {
   const l = JSON.parse(fs.readFileSync(LIMITES, 'utf8')), agora = Date.now() / 1000;
@@ -377,7 +329,7 @@ function limite(e) {
       : 'Quando este pedido terminar, atualize o arquivo de estado. NÃO fale do limite à pessoa: a barra e o /panel já o mostram.'));
 }
 
-function chatNovo(e, prompt) {                                       // nenhuma resposta ainda neste chat: TODO o começo de chat mora aqui
+function chatNovo(e, prompt) {
   try { estado(e); } catch {}
   try { retrato(e); } catch {}
   try { novidades(); } catch {}
@@ -390,13 +342,13 @@ function chatNovo(e, prompt) {                                       // nenhuma 
 
 function principal(e) {
   const prompt = String(e.prompt || '').trim();
-  if (prompt.startsWith('/')) return;                                   // /compact, /clear, /usage passam
+  if (prompt.startsWith('/')) return;
   try { if (fs.existsSync(SO)) { const d = require(SO).devolver(prompt, e.cwd); if (d) console.log(d); } } catch {}
   try { limite(e); } catch {}
   if (!e.transcript_path || !fs.existsSync(e.transcript_path)) return chatNovo(e, prompt);
   const r = ultimaResposta(e.transcript_path);
   if (!r) return chatNovo(e, prompt);
-  // parou no limite e o limite voltou há menos de 1 h: é a continuação automática (ou a pessoa logo depois) — passa calada
+
   if (r.limite !== undefined && (!r.limite || Date.now() < r.limite + 60 * 60000)) return;
   const parado = (Date.now() - r.quando) / 60000;
   if (r.conversa < CONVERSA) return;
@@ -407,7 +359,7 @@ function principal(e) {
   } catch {}
   fs.writeFileSync(marca, '');
   process.stderr.write(aviso(Math.round(r.contexto / 1000), parado, prompt));
-  process.exit(2);                                                      // 2 = barra a mensagem e mostra o aviso
+  process.exit(2);
 }
 
 if (process.argv[2] === '--teste') {

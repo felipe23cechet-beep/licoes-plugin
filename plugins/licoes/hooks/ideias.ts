@@ -1,11 +1,3 @@
-// /idea — guarda uma ideia no meio do trabalho, sem parar o turno e sem gastar token.
-//
-// 1) `/idea <texto>` acrescenta uma linha datada ao IDEIAS.md na raiz do projeto (viaja com ele, como o PROGRESSO.md).
-// 2) `/idea` sozinho mostra todas. Ninguém chama o modelo: o mod responde sozinho.
-// 3) `immediate`: digitado com o Claude trabalhando, roda na hora e o turno segue (comando sem isso espera o fim do
-//    turno). Ideia chega no meio do trabalho, e é aí que ela se perde (pedido do dono, 08/10/2026).
-// 4) Comando registrado, não skill: skill de plugin não aceita `immediate` (os campos do cabeçalho de skill não o têm,
-//    conferido no Claude Code 2.1.293). O custo: no app, o comando aparece no menu depois da primeira mensagem.
 import type { EngineInterface, Register } from 'claude-code'
 
 const ARQUIVO = 'IDEIAS.md'
@@ -44,7 +36,6 @@ export const COMANDO = {
   immediate: true,
 }
 
-// O plugin licoes junta os mods num módulo só (hooks/licoes.ts): lá, o COMANDO se registra no session.start do passa-bastão.
 export const ganchos: Register = on => {
   on('command.run', { command: 'idea' }, idea)
 }
