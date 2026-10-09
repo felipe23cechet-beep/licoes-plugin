@@ -355,7 +355,8 @@ function soOQueUsa(e) {
 
 // Limite do plano em 80% e 95% (ideia do limits.js da Helena, MIT): o número vem da barra de status (modelos/statusline.js),
 // que o grava em limites.json; no app, que não tem barra, quem grava é o mod passa-bastao (FERRAMENTAS §14). Sem os dois, fica
-// calado. Um aviso por nível, por chat.
+// calado. Um aviso por nível, por JANELA do limite (não por chat: o passa-bastão abre chat novo a toda hora); à pessoa, só o de
+// 95% — a barra e o /panel já mostram o número (09/10/2026).
 const LIMITES = process.env.LIMITES_ARQ || path.join(os.homedir(), '.claude', 'ganchos', 'limites.json');
 function limite(e) {
   const l = JSON.parse(fs.readFileSync(LIMITES, 'utf8')), agora = Date.now() / 1000;
@@ -363,17 +364,17 @@ function limite(e) {
   if (!janelas.length) return;
   const [nome, j] = janelas.sort((a, b) => b[1].pct - a[1].pct)[0];
   const nivel = j.pct >= 95 ? 95 : j.pct >= 80 ? 80 : 0; if (!nivel) return;
-  const marca = path.join(os.tmpdir(), `chat-parado-limite${nivel}-` + String(e.session_id || 'sessao').replace(/[^\w-]/g, ''));
+  const marca = path.join(os.tmpdir(), `chat-parado-limite${nivel}-${nome}-${Math.round((j.volta || 0) / 3600)}`.replace(/[^\w-]/g, ''));
   if (fs.existsSync(marca)) return; fs.writeFileSync(marca, '');
   const en = LINGUA === 'en', jan = { five_hour: en ? '5-hour' : 'de 5 horas', seven_day: en ? 'weekly' : 'da semana', spend_limit: en ? 'spend' : 'de gasto' }[nome] || nome;
   const volta = j.volta ? new Date(j.volta * 1000).toLocaleString(en ? 'en-US' : 'pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   console.log(en
     ? `[chat-parado hook] The ${jan} plan limit is at ${Math.round(j.pct)}%${volta ? ` (resets ${volta})` : ''}. ` + (nivel === 95
       ? 'Before anything else, write in the project state file (PROGRESSO.md or equivalent) where the work stopped and the next step. Then tell the person, in one line, that the limit is about to run out and when it comes back.'
-      : 'When this request is done, update the state file and tell the person, in one line, that a new chat (the resume prompt after /clear) makes each message cheaper, so the limit lasts longer.')
+      : 'When this request is done, update the state file. Do NOT mention the limit to the person: the status bar and /panel already show it.')
     : `[gancho chat-parado] O limite ${jan} do plano está em ${Math.round(j.pct)}%${volta ? ` (volta ${volta})` : ''}. ` + (nivel === 95
       ? 'Antes de qualquer outra coisa, grave no arquivo de estado do projeto (o PROGRESSO.md, se houver) onde parou e o próximo passo. Depois, diga à pessoa numa linha que o limite está acabando e quando ele volta.'
-      : 'Quando este pedido terminar, atualize o arquivo de estado e diga à pessoa numa linha que um chat novo (o prompt de retomada depois do /clear) deixa cada mensagem mais barata, e o limite dura mais.'));
+      : 'Quando este pedido terminar, atualize o arquivo de estado. NÃO fale do limite à pessoa: a barra e o /panel já o mostram.'));
 }
 
 function chatNovo(e, prompt) {                                       // nenhuma resposta ainda neste chat: TODO o começo de chat mora aqui

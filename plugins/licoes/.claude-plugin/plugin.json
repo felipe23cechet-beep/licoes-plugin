@@ -1,7 +1,7 @@
 {
   "name": "licoes",
   "displayName": "LIÇÕES GERAIS",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação — e o plugin avisa de segredo no commit e de chat parado, passa o bastão entre chats, confere a tela e (se ligar) aprende com os seus chats.",
   "author": {
     "name": "LIÇÕES GERAIS"

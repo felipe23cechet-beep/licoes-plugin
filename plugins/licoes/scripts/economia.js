@@ -5,7 +5,7 @@
 //   node <PASTA-LICOES>/economia.js 2026-09-13    → antes × depois desta data
 //   node <PASTA-LICOES>/economia.js --lista       → e cada volta fria, uma por linha
 //   node <PASTA-LICOES>/economia.js --tecnico     → a saída de medição (chamadas, US$ por ralo, quanto um chat novo pouparia)
-//   node <PASTA-LICOES>/economia.js --budget [dias] [here] → para onde foi o uso dos últimos 7 dias (o /licoes:budget)
+//   node <PASTA-LICOES>/economia.js --budget [dias] [here] → para onde foi o uso dos últimos 7 dias (o /budget do plugin, o /licoes-budget solto)
 //   node <PASTA-LICOES>/economia.js --teste       → o autoteste do --budget, com logs falsos numa pasta temporária
 // Os dois ralos (09 §9.15 e §9.14): VOLTA FRIA — a mensagem que chega a um chat de 100 mil+ tokens depois
 // de 60+ min parado e reescreve o cache inteiro; e CONVERSA ACIMA DE 200 MIL — cada chamada relê o que

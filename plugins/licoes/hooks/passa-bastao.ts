@@ -24,7 +24,7 @@ import type { PassaBastaoPainel } from '../types'
 // 7) /pass-baton num chat sem conversa não pede estado: cola o prompt que o chat anterior deixou pronto, ou diz que
 //    não há o que passar (04/10/2026: pedia "o contexto chegou ao limite" num chat vazio).
 // 10) O relato não se perde (07/10/2026): com CONTINUAR a resposta final some com o /clear e o dono não lê o prompt colado;
-//     a triagem inteira de um repositório e as perguntas dele sumiram assim. O prompt leva a seção PARA O DONO, somada de troca em troca,
+//     a triagem inteira de um repositório e as perguntas dele sumiram assim. O prompt leva a seção O QUE JÁ FOI FEITO, UMA lista fundida de troca em troca (sem bloco por chat),
 //     e ela só se entrega quando o trabalho PARA de vez — no resumo final do turno que espera o dono. Nunca no começo de
 //     um chat depois do /clear (correção do dono, 07/10/2026: "aí eu não vou ler nada").
 // 9) O arquivo se procura na RAIZ do projeto, não na pasta em que a sessão está: um `cd` do agente no terminal muda a
@@ -45,10 +45,12 @@ import type { PassaBastaoPainel } from '../types'
 let LIMITE = 150_000
 const CACHE_MS = 60 * 60 * 1000
 const ARQUIVO = '.passa-bastao.md'
-// Solto (CLAUDE_CODE_PLUGIN_DIRS), o mod registra /pass-baton e /panel ao abrir a sessão. Dentro do plugin licoes, os dois
-// são skills do plugin (/licoes:pass-baton, /licoes:panel), que aparecem no menu antes da sessão abrir e que este mod
-// responde sem chamar o modelo; o montar-plugin troca as duas linhas abaixo (08/10/2026: no app, os comandos registrados
-// só apareciam depois da primeira mensagem, e o dono procurou por /licoes:).
+// Solto (CLAUDE_CODE_PLUGIN_DIRS), o mod registra /pass-baton e /panel ao abrir a sessão. Dentro do plugin licoes, o
+// /pass-baton é a skill /licoes:pass-baton, que aparece no menu antes da sessão abrir e que este mod responde sem chamar o
+// modelo; o montar-plugin troca as duas linhas abaixo (08/10/2026: no app, os comandos registrados só apareciam depois da
+// primeira mensagem, e o dono procurou por /licoes:). O /panel é registrado nos dois, imediato: digitado com o Claude
+// trabalhando, roda na hora (09/10/2026: a skill /licoes:panel esperava o turno acabar; skill de plugin não aceita
+// `immediate`, e nome de comando registrado não aceita ':').
 const REGISTRAR = false
 const PASSAR = '/licoes:pass-baton'
 // Comandos de outro mod no mesmo plugin (o plugin aceita um módulo e um session.start): registrados no session.start daqui.
@@ -57,10 +59,10 @@ export const outrosComandos: Parameters<EngineInterface['command']['register']>[
 const pedido = (motivo: string) => [
   `[passa-bastão] ${motivo} Isto NÃO é motivo para parar: é a troca de chat, e o trabalho segue no chat novo. Grave a passagem em NO MÁXIMO 3 chamadas de ferramenta, sem reler nada (o que precisa já está na conversa):`,
   `1. UMA edição no arquivo de estado do projeto (o PROGRESSO.md, se houver), com a linha do título do bloco como âncora: onde parou e o próximo passo.`,
-  `2. UMA gravação de \`${ARQUIVO}\`: o prompt de retomada, na voz do dono, que um chat novo vai receber colado. Com CONTINUAR, ele COMEÇA pela seção "PARA O DONO": o que foi feito e o que foi ACHADO neste chat, uma linha por item, com o número; e, citados ao pé da letra, os pedidos e perguntas que o dono fez neste chat, cada um com o que foi feito dele ou "ainda não" (o dono não lê o prompt colado, e o chat que some leva junto o que ninguém repetir). Se o prompt que abriu ESTE chat já trazia uma "PARA O DONO", ela segue somada à nova — ninguém a entregou ainda. Logo abaixo, a ordem: "esta seção só se entrega quando o trabalho PARAR de vez: no resumo da mensagem final do turno que espera o dono, junto do que você fizer, respondendo cada pedido marcado ainda não. Nunca no começo de um chat, nem numa passagem com CONTINUAR (aí ela segue somada no próximo prompt)". Com ESPERAR, o arquivo vai SEM essa seção: o relato vai na sua mensagem final (passo 3). Depois, o que ler primeiro e o que fazer em seguida. Sem chave, senha ou token no texto: o arquivo fica no disco e viaja pela nuvem.`,
-  `   A 1ª linha do arquivo é só a marca: \`CONTINUAR\` se ainda há item decidido que não depende do dono — o padrão, mesmo com um relato a fazer (o relato vai somado na seção PARA O DONO e chega a ele quando o trabalho parar de vez; o mod limpa a conversa e cola o prompt),`,
+  `2. UMA gravação de \`${ARQUIVO}\`: o prompt de retomada, na voz do dono, que um chat novo vai receber colado. Com CONTINUAR, ele COMEÇA pela seção "O QUE JÁ FOI FEITO": o que foi feito e o que foi ACHADO, uma linha por item, com o número; e, citados ao pé da letra, os pedidos e perguntas do dono, cada um com o que foi feito dele ou "ainda não" (o dono não lê o prompt colado, e o chat que some leva junto o que ninguém repetir). Se o prompt que abriu ESTE chat já trazia essa seção, FUNDA as duas numa lista só — nunca um bloco por chat, nem "Do chat de…": o mesmo assunto vira uma linha, o item que um chat depois mudou fica só no estado final, e pedido já respondido sai da lista de pedidos e entra como feito. Logo abaixo, a ordem: "esta seção só se entrega quando o trabalho PARAR de vez: no resumo da mensagem final do turno que espera o dono, junto do que você fizer, respondendo cada pedido marcado ainda não. Nunca no começo de um chat, nem numa passagem com CONTINUAR (aí ela segue somada no próximo prompt)". Com ESPERAR, o arquivo vai SEM essa seção: o relato vai na sua mensagem final (passo 3). Depois, o que ler primeiro e o que fazer em seguida. Sem chave, senha ou token no texto: o arquivo fica no disco e viaja pela nuvem.`,
+  `   A 1ª linha do arquivo é só a marca: \`CONTINUAR\` se ainda há item decidido que não depende do dono — o padrão, mesmo com um relato a fazer (o relato vai fundido na seção O QUE JÁ FOI FEITO e chega a ele quando o trabalho parar de vez; o mod limpa a conversa e cola o prompt),`,
   `   ou \`ESPERAR\` só se o próximo passo só depende do dono (escolha dele, coisa que só ele faz, ação irreversível, mudança de direção), se a lista decidida acabou, ou se o dono pediu para PARAR neste chat ("vou parar", "para aqui", "continuo depois") — pedido de parada é ESPERAR, mesmo com item pela frente: aí o mod NÃO limpa, e ele cola com ${PASSAR} quando quiser.`,
-  `3. Encerre o turno. Com CONTINUAR, a mensagem final é UMA linha só ("Passagem gravada; o chat recomeça sozinho."): sem resumo, sem prompt, sem a frase do chat novo — o mod limpa a conversa logo depois e ninguém a lê; o relato vai na seção PARA O DONO do prompt. Isto vale acima de qualquer regra de resumo do projeto. Se a marca for ESPERAR, ESTA é a mensagem que para de vez: o resumo dela traz o relato inteiro — a PARA O DONO que o prompt deste chat trazia, somada ao que este chat fez e achou — e responde cada pedido do dono; depois, o bloco do chat novo como sempre: o PROMPT inteiro, o mesmo texto do arquivo sem a marca — sem citar o comando ${PASSAR} (a pessoa cola o prompt num chat novo; o comando não se menciona).`,
+  `3. Encerre o turno. Com CONTINUAR, a mensagem final é UMA linha só ("Passagem gravada; o chat recomeça sozinho."): sem resumo, sem prompt, sem a frase do chat novo — o mod limpa a conversa logo depois e ninguém a lê; o relato vai na seção O QUE JÁ FOI FEITO do prompt. Isto vale acima de qualquer regra de resumo do projeto. Se a marca for ESPERAR, ESTA é a mensagem que para de vez: o resumo dela traz o relato inteiro — a seção O QUE JÁ FOI FEITO que o prompt deste chat trazia, fundida ao que este chat fez e achou, DENTRO dos blocos normais do resumo (o que foi feito, decisões, o que ficou por provar), sem título próprio nem divisão por chat — e responde cada pedido do dono; depois, o bloco do chat novo como sempre: o PROMPT inteiro, o mesmo texto do arquivo sem a marca — sem citar o comando ${PASSAR} (a pessoa cola o prompt num chat novo; o comando não se menciona).`,
 ].join('\n')
 const PEDIDO = pedido('O contexto chegou ao limite de passagem.')
 const PEDIDO_DA_PESSOA = pedido(`A pessoa pediu a passagem para um chat novo (${PASSAR}).`)
@@ -317,7 +319,7 @@ async function passar($: EngineInterface, turno: number, tentou = false) {
   await $.prompt.submit({ text: arq.texto, asUser: true })
 }
 
-// /panel (ou /licoes:panel, no plugin).
+// /panel.
 async function painel($: EngineInterface) {
   await medir($).catch(() => {})
   await mostrar($).catch(() => {})
@@ -365,14 +367,14 @@ export const register: Register = on => {
         agendar($, iniciados)
       }
     }
-    if (REGISTRAR) {
-      await $.command.register({
-        name: 'pass-baton',
-        description: 'Grava o estado, limpa a conversa e recomeça num chat novo (passa-bastão)',
-      })
-      await $.command.register({ name: 'panel', description: 'Painel do passa-bastão: contexto até o limite, cache e passagem' })
-    }
-    for (const c of outrosComandos) await $.command.register(c)
+    const comandos: typeof outrosComandos = [
+      { name: 'panel', description: 'Contexto até o limite, cache, limites do plano e passagem (licoes)', immediate: true },
+      ...outrosComandos,
+    ]
+    if (REGISTRAR)
+      comandos.unshift({ name: 'pass-baton', description: 'Grava o estado, limpa a conversa e recomeça num chat novo (passa-bastão)' })
+    // Um registro recusado (nome em uso, nome inválido) faria o motor pular o session.start inteiro: cada um se protege.
+    for (const c of comandos) await $.command.register(c).catch(err => $.ui.log(`/${c.name} não registrado: ${err}`, { to: 'debug' }))
     // Os limites do plano na barra desde o começo: o motor só os mede depois da primeira resposta.
     await lerLimites($).catch(() => {})
     // A cada 30 s: o contexto (no meio de um turno longo, o fim do turno demora) e os limites que outra sessão gravou.
@@ -389,9 +391,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Os dois nomes: o do mod solto e o da skill do plugin.
   on('command.run', { command: 'panel' }, painel)
-  on('command.run', { command: 'licoes:panel' }, painel)
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
