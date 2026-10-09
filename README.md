@@ -1,17 +1,28 @@
-# LIÇÕES GERAIS — plugin do Claude Code
+# LIÇÕES GERAIS — a Claude Code plugin
 
-O plugin das LIÇÕES GERAIS para o Claude Code, por assinatura.
+300+ lessons from real Claude Code projects, by subscription. Claude pulls in the few that fit what you're doing, when you're doing it.
 
-Instalar (a chave vem no e-mail da compra):
+Subscribe and see what it does: https://licoes-servico.felipe23cechet.workers.dev
+
+## Install
+
+Your key comes in the email you get after subscribing.
 
 ```
 claude plugin marketplace add felipe23cechet-beep/licoes-plugin
 claude plugin install licoes@licoes
 ```
 
-A atualização automática vem **ligada**: a versão nova chega até 10 minutos depois da 1ª mensagem de um chat e vale
-no chat seguinte (ou com `/reload-plugins`). Para desligar: `/plugin` → aba **Marketplaces** → `licoes`. Para atualizar
-na hora:
-`claude plugin update licoes@licoes`.
+## Updates
 
-Sem chave, só as lições ficam desligadas; o resto do plugin funciona.
+Auto-update is **on** by default. A new version shows up within 10 minutes of the first message in a chat, and takes effect in the next chat (or after `/reload-plugins`). To update right away:
+
+```
+claude plugin update licoes@licoes
+```
+
+To turn auto-update off: `/plugin` → **Marketplaces** tab → `licoes`.
+
+## Without a key
+
+Only the lessons are off. Everything else in the plugin still works.
