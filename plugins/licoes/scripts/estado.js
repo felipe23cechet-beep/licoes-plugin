@@ -34,7 +34,7 @@ try {
 } catch {}
 
 (async () => {
-  if (!chave) { console.log('[lições] Sem chave de licença: as lições estão desligadas (o economia.js funciona). Para ligar: /plugin → licoes → configurar.'); return; }
+  if (!chave) { console.log('[lições] Sem chave de licença: as lições estão desligadas (o resto do plugin funciona). Para ligar: /plugin → licoes → configurar.'); return; }
   try {
     const r = await fetch(URL, { headers: { Authorization: `Bearer ${chave}` }, signal: AbortSignal.timeout(3000) });
     const e = await r.json();

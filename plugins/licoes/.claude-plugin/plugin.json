@@ -1,8 +1,8 @@
 {
   "name": "licoes",
   "displayName": "LIÇÕES GERAIS",
-  "version": "0.6.2",
-  "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação; e os ganchos da base rodam na sua máquina — segredo no commit, chat parado, passagem de bastão, tela e (se ligar) as lições próprias.",
+  "version": "0.6.3",
+  "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação — e o plugin avisa de segredo no commit e de chat parado, passa o bastão entre chats, confere a tela e (se ligar) aprende com os seus chats.",
   "author": {
     "name": "LIÇÕES GERAIS"
   },
@@ -11,13 +11,13 @@
     "chave": {
       "type": "string",
       "title": "Chave de licença",
-      "description": "A chave do e-mail da compra (começa com lg_). Sem ela, o economia.js e os ganchos funcionam; as lições, não.",
+      "description": "A chave do e-mail da compra (começa com lg_). Sem ela, só as lições ficam desligadas; o resto do plugin funciona.",
       "sensitive": true
     },
     "destilar": {
       "type": "boolean",
       "title": "Aprender sozinho com os seus chats",
-      "description": "No fim de cada chat, o Haiku lê a conversa e grava o que custou caro como lição própria (marca ‹auto›). Custa em média US$ 0,045 por chat, do seu plano. Desligado, nada roda.",
+      "description": "No fim de cada chat, guarda como lição sua o que custou caro nele (marca ‹auto›). Custa em média US$ 0,045 por chat, do seu plano. Desligado, nada roda.",
       "default": false
     },
     "pasta_meu": {

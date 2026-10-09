@@ -3,7 +3,7 @@
   "owner": {
     "name": "LIÇÕES GERAIS"
   },
-  "description": "O plugin das LIÇÕES GERAIS: as lições do Claude Code por assinatura, e os ganchos da base na sua máquina.",
+  "description": "O plugin das LIÇÕES GERAIS: as lições do Claude Code por assinatura.",
   "plugins": [
     {
       "name": "licoes",

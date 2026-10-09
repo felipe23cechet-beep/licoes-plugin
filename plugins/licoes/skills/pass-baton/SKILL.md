@@ -1,6 +1,6 @@
 ---
 name: pass-baton
-description: Passa o bastão — grava o estado, limpa a conversa e recomeça num chat novo a partir do prompt de retomada (em vez da compactação automática)
+description: Passa o bastão — continua num chat novo sem perder o fio (em vez da compactação automática)
 disable-model-invocation: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: tela
-description: Liga a conferência de tela do plugin — no fim de todo turno que mexe em .html, .css, .tsx, .jsx, .vue, .svelte ou .astro, mede o contraste (WCAG AA, 1440 e 375 px) e o vazamento lateral no celular, e devolve o turno se achar problema. Use quando a pessoa pedir para ligar a conferência de tela, ou perguntar por que ela não roda.
+description: Liga a conferência de tela do plugin — no fim de todo turno que mexe em .html, .css, .tsx, .jsx, .vue, .svelte ou .astro, confere o contraste e o vazamento lateral no celular, e devolve o turno se achar problema. Use quando a pessoa pedir para ligar a conferência de tela, ou perguntar por que ela não roda.
 ---
 
 A conferência já está no plugin, **desligada até instalar uma peça**: o `playwright-core` 1.63.0 (Apache-2.0, ~10 MB). Ele usa o

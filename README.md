@@ -1,7 +1,6 @@
 # LIÇÕES GERAIS — plugin do Claude Code
 
-A casca do serviço LIÇÕES GERAIS: conecta o Claude Code ao servidor das lições com a sua chave de assinatura.
-As lições moram no servidor; este repositório não tem nenhuma.
+O plugin das LIÇÕES GERAIS para o Claude Code, por assinatura.
 
 Instalar (a chave vem no e-mail da compra):
 
@@ -15,4 +14,4 @@ no chat seguinte (ou com `/reload-plugins`). Para desligar: `/plugin` → aba **
 na hora:
 `claude plugin update licoes@licoes`.
 
-Sem chave, o plugin traz o `economia.js`: quanto o contexto custou nesta máquina, lido dos registros locais.
+Sem chave, só as lições ficam desligadas; o resto do plugin funciona.
