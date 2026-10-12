@@ -29,6 +29,31 @@ export type PassaBastaoPainel = {
 }
 declare module 'claude-code' {
   interface PluginState {
-    'licoes': { pastas: PassaBastaoPastas; passagem: PassaBastaoPassagem; painel: PassaBastaoPainel }
+    'licoes': { pending: Learning[]; savedThisSession: SavedRule[]; pastas: PassaBastaoPastas; passagem: PassaBastaoPassagem; painel: PassaBastaoPainel }
   }
+}
+
+
+export type Learning = {
+  id: string
+  
+  rule: string
+  scope: 'global' | 'project'
+  
+  project: string
+  
+  count: number
+  firstAt: number
+  lastAt: number
+  status: 'pending' | 'saved' | 'skipped'
+  confidence: number
+}
+
+export type SavedRule = { rule: string; scope: 'global' | 'project'; project: string }
+
+export type ReflectState = {
+  
+  pending: Learning[]
+  
+  savedThisSession: SavedRule[]
 }

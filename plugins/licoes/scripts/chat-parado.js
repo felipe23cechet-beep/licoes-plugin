@@ -260,7 +260,32 @@ function emDia(e) {
     else { copiar(mestre, local); feito.push('meu/CLAUDE-global.md → CLAUDE.md global (vale do próximo chat; leia-o agora)'); }
   }
   const agora = ler(mestre); if (agora !== null && agora === ler(local)) fs.writeFileSync(marca, agora);
-  if (!feito.length) return;
+
+  const perfil = ler(path.join(base, 'meu', 'PERFIL.md')), dirE = path.join(base, 'modelos', 'estilos');
+  let pergunta = false;
+  if (perfil !== null && fs.existsSync(dirE)) {
+    const v = (perfil.match(/\|\s*\*\*Tamanho da resposta\*\*[^|\n]*\|\s*([^|\n]*)/) || [])[1] || '';
+    const nome = /concis/i.test(v) ? 'licoes-concisa' : /explic|explain/i.test(v) ? 'licoes-explicada' : /normal/i.test(v) ? 'licoes-normal' : null;
+    if (!nome) pergunta = true;
+    else {
+      const dirC = path.join(casa, 'output-styles'); fs.mkdirSync(dirC, { recursive: true });
+      for (const f of fs.readdirSync(dirE)) if (f.endsWith('.md') && ler(path.join(dirC, f)) !== ler(path.join(dirE, f))) { fs.copyFileSync(path.join(dirE, f), path.join(dirC, f)); feito.push('output-styles/' + f); }
+      const arqS = path.join(casa, 'settings.json'), txt = ler(arqS), visto = path.join(casa, 'estilo-de-fora.visto');
+      let s; try { s = txt === null ? {} : JSON.parse(txt); } catch { s = null; }
+      if (s && s.outputStyle !== nome && (!s.outputStyle || /^licoes-/.test(s.outputStyle))) {
+        const bak = arqS + '.bak-' + hoje; if (txt !== null && !fs.existsSync(bak)) fs.writeFileSync(bak, txt);
+        s.outputStyle = nome; fs.writeFileSync(arqS, JSON.stringify(s, null, 2) + '\n'); feito.push('outputStyle ' + nome);
+      } else if (s && s.outputStyle && s.outputStyle !== nome && ler(visto) !== s.outputStyle) { fs.writeFileSync(visto, s.outputStyle); feito.push('!estilo:' + s.outputStyle); }
+    }
+  }
+  if (pergunta) console.log(LINGUA === 'en'
+    ? '[chat-parado hook] meu/PERFIL.md has no "Tamanho da resposta" (response length) row: ask the person ONCE, with on-screen options (Concise · Normal · Explained — modelos/COMECAR-PROJETO-NOVO.md §2.4, question 8), write the row, and say it applies from the next chat on every computer, and that they can change it any time by asking.'
+    : '[gancho chat-parado] O meu/PERFIL.md não tem a linha "Tamanho da resposta": pergunte UMA vez, com opções na tela (Concisa · Normal · Explicada — modelos/COMECAR-PROJETO-NOVO.md §2.4, pergunta 8), grave a linha e diga que vale do próximo chat, em todos os computadores, e que dá para mudar quando quiser, pedindo.');
+  const fora = (feito.find(x => x.startsWith('!estilo:')) || '').slice(8);
+  if (fora) console.log(LINGUA === 'en'
+    ? `[chat-parado hook] This computer's ~/.claude/settings.json has the output style "${fora}", chosen outside the lessons folder: left as is. Ask once whether the meu/PERFIL.md choice should replace it.`
+    : `[gancho chat-parado] O ~/.claude/settings.json desta máquina tem o estilo de saída "${fora}", escolhido fora da pasta de lições: não troquei. Pergunte uma vez se a escolha do meu/PERFIL.md deve valer no lugar.`);
+  if (!feito.some(x => !x.startsWith('!estilo:'))) return;
   const conflito = feito.includes('!conflito'), lista = feito.filter(x => x[0] !== '!'), quebrado = feito.filter(x => x.startsWith('!quebrado:')).map(x => x.slice(10)), gancho = lista.some(x => /\.m?js$/.test(x));
   const npm = lista.filter(x => x.endsWith('/package.json')).map(x => path.join(casa, 'ganchos', path.dirname(x)));
   console.log(LINGUA === 'en'

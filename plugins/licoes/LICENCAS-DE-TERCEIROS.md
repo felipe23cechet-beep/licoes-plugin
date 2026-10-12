@@ -17,6 +17,7 @@ licença acompanham qualquer cópia ou parte substancial da obra*. Este arquivo 
 | `emil-design-eng` | `emilkowalski/skills` | Copyright (c) 2026 Emil Kowalski | MIT |
 | gancho `modelos/ganchos/config-protection.js` | `affaan-m/ECC` | Copyright (c) 2026 Affaan Mustafa | MIT |
 | ganchos `modelos/ganchos/segredo-no-commit.js` e `modelos/ganchos/tela/`; `modelos/biblioteca/` | `vijcoelho/project-helena` (a Helena, commit `c356888`) | Copyright (c) 2026 Vitor Coelho | MIT |
+| mod `modelos/mods/reflect/` (in the licoes plugin, `hooks/reflect.ts`) | `BayramAnnakov/claude-reflect`, `mod/` (commit `b6c4232`) | Copyright (c) 2025 Bayram Annakov | MIT |
 
 ⚠️ **O que foi mudado em cada uma está em [`CREDITOS.md`](CREDITOS.md).** Em algumas, o corpo é
 quase todo do autor original — medido em 15/09/2026: na `find-skills`, **91 das 96 linhas** são
@@ -43,6 +44,7 @@ Copyright (c) 2026 Vercel, Inc.
 Copyright (c) 2026 Emil Kowalski
 Copyright (c) 2026 Affaan Mustafa
 Copyright (c) 2026 Vitor Coelho
+Copyright (c) 2025 Bayram Annakov
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -1,8 +1,8 @@
 {
   "name": "licoes",
   "displayName": "LIÇÕES GERAIS",
-  "version": "0.6.5",
-  "description": "As lições gerais do Claude Code, por assinatura: o Claude consulta a lição que serve a cada situação — e o plugin avisa de segredo no commit e de chat parado, passa o bastão entre chats, confere a tela e (se ligar) aprende com os seus chats.",
+  "version": "0.7.0",
+  "description": "Claude Code's general lessons, by subscription: Claude looks up the lesson that fits each moment. The plugin also warns about secrets in a commit and about stale chats, passes the baton between chats, checks the screen and, if you turn them on, learns from your chats and from your corrections.",
   "author": {
     "name": "LIÇÕES GERAIS"
   },
@@ -10,20 +10,26 @@
   "userConfig": {
     "chave": {
       "type": "string",
-      "title": "Chave de licença",
-      "description": "A chave do e-mail da compra (começa com lg_). Sem ela, só as lições ficam desligadas; o resto do plugin funciona.",
+      "title": "License key",
+      "description": "The key from your purchase email (starts with lg_). Without it only the lessons are off; the rest of the plugin works.",
       "sensitive": true
     },
     "destilar": {
       "type": "boolean",
-      "title": "Aprender sozinho com os seus chats",
-      "description": "No fim de cada chat, guarda como lição sua o que custou caro nele (marca ‹auto›). Custa em média US$ 0,045 por chat, do seu plano. Desligado, nada roda.",
+      "title": "Learn on its own from your chats",
+      "description": "At the end of each chat, it keeps what cost you dearly in it as a lesson of yours (marked ‹auto›). About US$ 0.045 per chat on average, from your plan. Off: nothing runs.",
       "default": false
     },
     "pasta_meu": {
       "type": "directory",
-      "title": "Pasta das lições próprias",
-      "description": "Onde ficam as suas lições (LICOES-PROPRIAS.md). Vazio = ~/.claude/licoes/meu. Usa 2 computadores? Aponte para uma pasta do OneDrive ou do Dropbox."
+      "title": "Folder for your own lessons",
+      "description": "Where your lessons live (LICOES-PROPRIAS.md). Empty = ~/.claude/licoes/meu. On 2 computers? Point it at a OneDrive or Dropbox folder."
+    },
+    "corrections": {
+      "type": "boolean",
+      "title": "Learn rules from your corrections",
+      "description": "When you correct Claude, a Haiku check spots the rule and shows it above the prompt; one press saves it to CLAUDE.md, in the language you wrote it in. It reads each short message you send: US$ 0.04 per 78 messages measured, about US$ 0.0005 each, from your plan. Off: nothing runs.",
+      "default": false
     }
   }
 }
