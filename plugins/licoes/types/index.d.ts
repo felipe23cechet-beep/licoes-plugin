@@ -47,6 +47,8 @@ export type Learning = {
   lastAt: number
   status: 'pending' | 'saved' | 'skipped'
   confidence: number
+  
+  session?: string
 }
 
 export type SavedRule = { rule: string; scope: 'global' | 'project'; project: string }

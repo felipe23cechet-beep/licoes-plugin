@@ -206,6 +206,7 @@ async function record($: EngineInterface, v: Verdict, root: string, isExplicit: 
     lastAt: now,
     status: isKnown ? 'saved' : 'pending',
     confidence: v.confidence,
+    session: await $.session.id().catch(() => undefined),
   })
   await saveItems($, list)
 }
@@ -392,6 +393,7 @@ export const ganchos: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const list = await read($, pending)
+    const here = await $.session.id().catch(() => undefined)
     if (list.length === 0) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const below = await next(e)
@@ -399,19 +401,19 @@ export const ganchos: Register = (on, options) => {
       h(
         Box,
         { key: `row:${l.id}`, flexDirection: 'column' },
-        h(Text, { color: 'green', wrap: 'wrap' }, `reflect · "${l.rule}"${l.count > 1 ? ` ×${l.count}` : ''}`),
+        h(Text, { color: 'green', wrap: 'wrap' }, `reflect · "${l.rule}"${l.count > 1 ? ` ×${l.count}` : ''}${l.session !== undefined && l.session !== here ? ' · (from an earlier chat)' : ''}`),
         h(
           Box,
           { flexDirection: 'row', gap: 1 },
           h(Button, {
             key: `save:${l.id}`,
             variant: 'primary',
-            label: l.scope === 'project' ? 'Save to ./CLAUDE.md' : 'Save to ~/.claude/CLAUDE.md',
+            label: l.scope === 'project' ? 'Save · this project only' : 'Save · all my projects',
             onPress: () => saveTo($, l, l.scope),
           }),
           h(Button, {
             key: `other:${l.id}`,
-            label: l.scope === 'project' ? 'Global instead' : 'This repo instead',
+            label: l.scope === 'project' ? 'All my projects instead' : 'This project only',
             onPress: () => saveTo($, l, l.scope === 'project' ? 'global' : 'project'),
           }),
           h(Button, { key: `edit:${l.id}`, label: 'Edit', onPress: () => edit($, l) }),
