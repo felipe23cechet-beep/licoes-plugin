@@ -1,8 +1,8 @@
 {
   "name": "licoes",
   "displayName": "LIÇÕES GERAIS",
-  "version": "0.7.0",
-  "description": "Claude Code's general lessons, by subscription: Claude looks up the lesson that fits each moment. The plugin also warns about secrets in a commit and about stale chats, passes the baton between chats, checks the screen and, if you turn them on, learns from your chats and from your corrections.",
+  "version": "0.7.1",
+  "description": "Claude Code's general lessons, by subscription: Claude looks up the lesson that fits each moment. The plugin also warns about secrets in a commit and about stale chats, passes the baton between chats, checks the screen learns from your corrections and, if you turn it on, from your chats.",
   "author": {
     "name": "LIÇÕES GERAIS"
   },
@@ -28,8 +28,8 @@
     "corrections": {
       "type": "boolean",
       "title": "Learn rules from your corrections",
-      "description": "When you correct Claude, a Haiku check spots the rule and shows it above the prompt; one press saves it to CLAUDE.md, in the language you wrote it in. It reads each short message you send: US$ 0.04 per 78 messages measured, about US$ 0.0005 each, from your plan. Off: nothing runs.",
-      "default": false
+      "description": "When you correct Claude, a Haiku check spots the rule and shows it above the prompt; one press saves it to CLAUDE.md, in the language you wrote it in. It reads each short message you send: US$ 0.04 per 78 messages measured, about US$ 0.0005 each, from your plan. On by default; turn it off and nothing runs.",
+      "default": true
     }
   }
 }
