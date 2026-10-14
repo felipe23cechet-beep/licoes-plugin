@@ -6,7 +6,6 @@ import type { Learning } from '../types'
 const pending = atom({ plugin: 'licoes', key: 'pending' } as const, [])
 const savedThisSession = atom({ plugin: 'licoes', key: 'savedThisSession' } as const, [])
 
-
 const MAX_PROMPT = 500
 const MAX_RULE = 200
 const MIN_CONFIDENCE = 0.7
@@ -33,14 +32,12 @@ const SECRET = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
 ]
 
-
 let model = 'haiku'
 let isOn = true
 let isDraining = false
 
 let writing: Promise<unknown> = Promise.resolve()
 const queue: string[] = []
-
 
 export function pairs(s: string) {
   const words = s
@@ -54,7 +51,6 @@ export function pairs(s: string) {
   return out
 }
 
-
 export function similarity(a: string, b: string) {
   const x = pairs(a)
   const y = pairs(b)
@@ -64,12 +60,26 @@ export function similarity(a: string, b: string) {
   return both / (x.size + y.size - both)
 }
 
+const bare = (s: string) =>
+  s
+    .replace(/^\s*(?:[-*+>]|#+|\d+[.)])\s+/, '')
+    .replace(/[*`~]|\p{Extended_Pictographic}|️/gu, '')
+    .replace(/[.!?:]+\s*$/, '')
+    .trim()
+
+export const sentences = (file: string) =>
+  file
+    .split(/\n|\||;|(?<=[.!?][*`"')\]]*)\s+/)
+    .map(bare)
+    .filter(s => s !== '')
+
+export const isWritten = (file: string, rule: string) => sentences(file).some(s => similarity(s, bare(rule)) >= SAME)
+
 export const looksSecret = (s: string) => SECRET.some(re => re.test(s))
 
 export const isTrivial = (text: string) => TRIVIAL.test(text.trim())
 
 export const remembered = (text: string) => /^\s*(?:remember|lembre(?:-se)?|recuerda)\s*:\s*([\s\S]+)$/i.exec(text)?.[1]?.trim()
-
 
 export function cleanRule(raw: string): string | undefined {
   const rule = raw.trim().replace(/^[-*]\s+/, '')
@@ -124,7 +134,6 @@ export function parseVerdict(text: string): Verdict | undefined {
   }
 }
 
-
 export function withRule(file: string, rule: string): string | undefined {
   const bullets = file.split('\n').filter(line => /^\s*[-*] /.test(line))
   if (bullets.some(line => similarity(line.replace(/^\s*[-*]\s+/, ''), rule) >= 0.8)) return file
@@ -144,7 +153,6 @@ async function items($: EngineInterface): Promise<Learning[]> {
   const got = await $.store.get('items')
   return Array.isArray(got) ? (got as Learning[]) : []
 }
-
 
 async function saveItems($: EngineInterface, list: Learning[]) {
   let kept = list
@@ -176,7 +184,6 @@ async function readText($: EngineInterface, path: string) {
   return typeof got === 'string' ? got : ''
 }
 
-
 async function record($: EngineInterface, v: Verdict, root: string, isExplicit: boolean) {
   const now = await $.clock.now()
   const list = await items($)
@@ -193,9 +200,7 @@ async function record($: EngineInterface, v: Verdict, root: string, isExplicit: 
     return
   }
   const target = await readText($, await fileFor($, v.scope, root))
-  const isKnown = target
-    .split('\n')
-    .some(line => /^\s*[-*] /.test(line) && similarity(line.replace(/^\s*[-*]\s+/, ''), v.rule) >= SAME)
+  const isKnown = isWritten(target, v.rule)
   list.push({
     id: `r${now.toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`,
     rule: v.rule,
@@ -211,7 +216,6 @@ async function record($: EngineInterface, v: Verdict, root: string, isExplicit: 
   await saveItems($, list)
 }
 
-
 async function lastReply($: EngineInterface) {
   const rows = await $.session.messages()
   for (let i = rows.length - 1; i >= 0; i -= 1) {
@@ -220,7 +224,6 @@ async function lastReply($: EngineInterface) {
   }
   return ''
 }
-
 
 async function checkOne($: EngineInterface, text: string) {
   if ((await $.store.get('paused')) === true) return
@@ -247,8 +250,6 @@ async function checkOne($: EngineInterface, text: string) {
   if (v === undefined || !v.isRule || v.confidence < MIN_CONFIDENCE) return
   await record($, v, root, false)
 }
-
-
 
 async function admit($: EngineInterface, text: string, isSdk: boolean) {
   if (isSdk && (await $.env.get('CLAUDE_CODE_SESSION_ATTENDED').catch(() => undefined)) !== '1') return
@@ -286,7 +287,6 @@ async function decide($: EngineInterface, id: string, status: Learning['status']
   await refreshBand($)
 }
 
-
 async function saveTo($: EngineInterface, l: Learning, scope: 'global' | 'project') {
   const job = writing.then(async () => {
     const latest = (await items($)).find(one => one.id === l.id)
@@ -312,7 +312,6 @@ async function skip($: EngineInterface, l: Learning) {
   await decide($, l.id, 'skipped')
 }
 
-
 async function edit($: EngineInterface, l: Learning) {
   const box = await $.prompt.read()
   if (box.text.trim() !== '') {
@@ -322,7 +321,6 @@ async function edit($: EngineInterface, l: Learning) {
   const filled = await $.prompt.fill({ text: `remember: ${l.rule}` })
   if (filled.isFilled) await decide($, l.id, 'skipped')
 }
-
 
 async function reflect($: EngineInterface, e: { args: string }) {
   if (!isOn)
@@ -350,13 +348,11 @@ export const COMANDO = {
   immediate: true,
 }
 
-
 export const ganchos: Register = (on, options) => {
   isOn = options.corrections !== false
   if (typeof options.model === 'string' && options.model.trim() !== '') model = options.model.trim()
 
   on('command.run', { command: 'reflect' }, reflect)
-
 
   on('prompt.submit', ($, e, next) => {
     const text = e.text.trim()
@@ -373,7 +369,6 @@ export const ganchos: Register = (on, options) => {
     }
     return next(e)
   })
-
 
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
     if (isOn && e.agentId === undefined) await refreshBand($).catch(() => undefined)
