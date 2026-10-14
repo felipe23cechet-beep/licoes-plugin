@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+
 const fs = require('fs'), path = require('path'), os = require('os');
 
 const CASA = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
@@ -18,6 +19,23 @@ const gravar = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); f
 const chave = p => path.resolve(p).toLowerCase();
 const curto = n => String(n).split(':').pop();
 const dobrar = t => String(t).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
+
+const RASTRO = () => process.env.SO_O_QUE_USA_RASTRO === '1' || fs.existsSync(path.join(__dirname, '..', '.claude-plugin', 'plugin.json'))
+  ? path.join(CASA(), 'licoes', 'RASTRO.md') : '';
+const RASTRO_TOPO = `# What the licoes plugin changed on this machine
+
+One line per change outside the plugin's own folders, written when it happened: the date, the file, what changed.
+/licoes:uninstall reads it to undo exactly these. Lines Claude added right after looking up a lesson are here too.
+
+`;
+function anotar(arq, campo, cortes, hoje) {
+  const f = RASTRO(); if (!f) return;
+  let t = ''; try { t = fs.readFileSync(f, 'utf8'); } catch {}
+  const novas = cortes.map(x => `${arq.replace(/\\/g, '/')} · ${campo(x)}[${JSON.stringify(x.id)}] = ${JSON.stringify(x.valor)}`).filter(l => !t.includes(l));
+  if (!novas.length) return;
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, (t || RASTRO_TOPO) + novas.map(l => `- ${hoje} · ${l}\n`).join(''));
+}
 
 function usoPorProjeto() {
   const dir = path.join(CASA(), 'projects'), desde = Date.now() - DIAS * 864e5, tmp = chave(os.tmpdir()), out = {};
@@ -64,6 +82,7 @@ function candidatos(pasta) {
   return marcarPalavras(c.filter(x => !FICAM.includes(x.nome) && x.nome !== 'licoes'));
 }
 
+
 const descricao = f => { try { return (fs.readFileSync(f, 'utf8').match(/^description:s*(.+)$/m) || [])[1] || ''; } catch { return ''; } };
 const palavrasDe = t => new Set(dobrar(t).split(/[^a-z0-9-]+/).filter(w => w.length >= 4 && !/^d+$/.test(w)));
 function marcarPalavras(c) {
@@ -99,6 +118,7 @@ function rodar(base) {
       reg.off.push({ id: x.id, tipo: x.tipo, nome: x.nome, palavras: x.palavras || [] });
     }
     gravar(arqL, local);
+    try { anotar(arqL, x => x.tipo === 'plugin' ? 'enabledPlugins' : 'skillOverrides', sai, hoje); } catch {}
     feito.push(`só o que usa: ${sai.length} cortado(s) em ${path.basename(p.cwd)} (${sai.map(x => x.nome).join(', ')}) — nunca usados em ${p.chats} chats; voltam sozinhos quando um pedido os nomeia, ou apagando a linha no .claude/settings.local.json`);
   }
   gravar(ESTADO(), est);
@@ -137,7 +157,7 @@ else if (require.main === module && process.argv[2] === '--ver') {
 }
 else if (require.main === module && process.argv[2] === '--teste') {
   const T = fs.mkdtempSync(path.join(os.homedir(), '.so-o-que-usa-teste-')), casa = path.join(T, 'cfg'), proj = path.join(T, 'proj'), base = path.join(T, 'base');
-  Object.assign(process.env, { CLAUDE_CONFIG_DIR: casa, SO_O_QUE_USA_ESTADO: path.join(T, 'estado.json'), DESTILAR_ESTADO: path.join(T, 'destilar') });
+  Object.assign(process.env, { SO_O_QUE_USA_RASTRO: '1', CLAUDE_CONFIG_DIR: casa, SO_O_QUE_USA_ESTADO: path.join(T, 'estado.json'), DESTILAR_ESTADO: path.join(T, 'destilar') });
   const esc = (f, t) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); };
   const velho = f => fs.utimesSync(f, new Date(Date.now() - 30 * 864e5), new Date(Date.now() - 30 * 864e5));
   esc(path.join(base, 'meu', 'PERFIL.md'), '| **Só o que usa** *(cortar)* | **Sim, em todo projeto** |\n');
@@ -157,6 +177,9 @@ else if (require.main === module && process.argv[2] === '--teste') {
   confere(!L().novinha, 'a instalada há menos de 14 dias fica');
   confere(!L().graphify, 'o que já foi decidido no settings.json não se toca');
   confere(f.length === 1 && /novidades/.test(NOVIDADES()) && ler(NOVIDADES(), []).length === 1, 'o corte vira novidade do próximo chat');
+  const r = fs.readFileSync(path.join(casa, 'licoes', 'RASTRO.md'), 'utf8');
+  confere(r.startsWith('# What the licoes plugin') && r.includes('settings.local.json · skillOverrides["anthropic-skills:pdf"] = "off"\n')
+    && r.includes('skillOverrides["grill-me"] = "name-only"') && !r.includes('xlsx'), 'cada corte vira uma linha do RASTRO.md, para o uninstall');
   confere(rodar(base).length === 0, 'roda uma vez por dia');
   confere(devolver('arruma o css', proj) === '', 'pedido sem nada cortado: silêncio');
   const d = devolver('Lê esse PDF e me resume', path.join(proj, 'src'));

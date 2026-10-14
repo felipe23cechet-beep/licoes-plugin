@@ -3,6 +3,7 @@ import { register as passaBastao, outrosComandos } from './passa-bastao.ts'
 import { COMANDO as idea, ganchos as ideias } from './ideias.ts'
 import { COMANDO as budget, ganchos as orcamento } from './budget.ts'
 import { COMANDO as reflectCmd, ganchos as reflect } from './reflect.ts'
+import { ganchos as rastro } from './rastro.ts'
 
 export const register: Register = (on, options) => {
   outrosComandos.push(idea, budget, reflectCmd)
@@ -10,4 +11,5 @@ export const register: Register = (on, options) => {
   ideias(on)
   orcamento(on)
   reflect(on, options)
+  rastro(on)
 }

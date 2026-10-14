@@ -8,6 +8,14 @@ that came from it. Go in order. Don't delete anything before step 3.
 
 ## 1. Find everything (read only)
 
+**First, the record: `~/.claude/licoes/RASTRO.md`** (or under `$CLAUDE_CONFIG_DIR`, if that's set). Since plugin 0.7.3 the
+plugin writes one line there for each change it made outside its own folders: the date, the file, what changed - the lines
+Claude added to a CLAUDE.md, a memory or a settings file right after looking up a lesson, the CLAUDE.md that got the
+*"Learned rules"* section, and each skill or plugin switched off in a project's `settings.local.json`. Each line is a
+**sure find**, no need to ask where it came from: check it's still there (the person may have removed or changed it since);
+gone means nothing to undo. A *"Learned rules"* line still follows item 4's exception. The file itself goes with `licoes/`. No file, or the plugin was used before 0.7.3: the search
+below is the whole job. With the file, run the search anyway - it catches what came before the record or outside it.
+
 Look for these, and note each find with its path and one line on what it is:
 
 1. **The plugin's folders and files in `~/.claude/`:** `licoes/` (all of it), `licoes-maquina.txt`, and in `ganchos/`:
