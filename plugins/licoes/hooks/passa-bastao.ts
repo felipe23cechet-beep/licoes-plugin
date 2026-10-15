@@ -38,6 +38,10 @@ let tokens: number | undefined
 
 let iniciados = 0
 
+let daPessoa = 0
+
+const EVENTO_DO_APP = /^\s*<[a-z]+(?:-[a-z]+)*-(?:event|notification)>/
+
 let conversou = false
 
 let comecouEm = 0
@@ -218,10 +222,16 @@ function desistir($: EngineInterface) {
   })
 }
 
+function seguiu($: EngineInterface, turno: number) {
+  if (iniciados === turno) return false
+  if (daPessoa > turno) desistir($)
+  return true
+}
+
 async function passar($: EngineInterface, turno: number, tentou = false) {
-  if (iniciados !== turno) return desistir($)
+  if (seguiu($, turno)) return
   const arq = await lerArquivo($)
-  if (iniciados !== turno) return desistir($)
+  if (seguiu($, turno)) return
 
   if (!arq && !tentou) return void $.clock.after(3_000, () => void passar($, turno, true).catch(err => falhou($, err)))
 
@@ -401,6 +411,8 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     iniciados++
+
+    if (!EVENTO_DO_APP.test(e.text ?? '')) daPessoa = iniciados
     emTurno = true
     void mostrar($).catch(() => {})
     comecouEm = await $.clock.now()
