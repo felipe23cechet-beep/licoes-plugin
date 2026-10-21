@@ -51,12 +51,11 @@ This chat holds ${mil}k tokens and sat idle for ${tempo}. Replying here would re
 
 WHAT TO DO — pick one:
 
-1️⃣ The last reply ended with a resume prompt?
-→ Open a new chat and paste that prompt.
+1️⃣ Open a new chat and type just: continue
+(Claude picks up from the top of PROGRESSO.md, or reads only the end of this chat, ~4k tokens.)
 
-2️⃣ No resume prompt (the chat stopped mid-task, the limit ran out)?
-→ Open a new chat and type just: continue
-(Claude reads only the end of this chat, ~4k tokens.)
+2️⃣ The last reply ended with a prompt for another project or folder?
+→ Open the chat there and paste that prompt.
 
 3️⃣ Want to continue here anyway?
 → Send the message again within ${INSISTIU_MIN} min.
@@ -72,12 +71,11 @@ Este chat tem ${mil} mil tokens e ficou parado ${tempo}. Responder aqui releria 
 
 O QUE FAZER — escolha um:
 
-1️⃣ A última resposta terminou com um prompt de retomada?
-→ Abra um chat novo e cole esse prompt.
+1️⃣ Abra um chat novo e escreva só: continue
+(O Claude segue do topo do PROGRESSO.md, ou lê só o fim deste chat, ~4 mil tokens.)
 
-2️⃣ Não tem prompt (o chat parou no meio, o limite acabou)?
-→ Abra um chat novo e escreva só: continue
-(O Claude lê só o fim deste chat, ~4 mil tokens.)
+2️⃣ A última resposta terminou com um prompt para outro projeto ou pasta?
+→ Abra o chat lá e cole esse prompt.
 
 3️⃣ Quer continuar aqui mesmo assim?
 → Mande a mensagem de novo em até ${INSISTIU_MIN} min.
@@ -90,8 +88,8 @@ ${txt}
 
 function grande(mil, base) {
   return LINGUA === 'en'
-    ? `[chat-parado hook] This chat already holds ${mil}k tokens (${mil - base}k of conversation over the ${base}k it started with). Do what the message asks. The size is NOT a reason to stop, cut short or leave an item for another chat: a decided list goes to the end in this chat (the conversation compacts itself near the limit). Only when EVERYTHING decided is done, say in the reply that the next task is cheaper in a new chat — every step here re-reads the ${mil}k, against the ~${base}k a new chat starts with — and hand over the ready prompt.`
-    : `[gancho chat-parado] Este chat já tem ${mil} mil tokens (${mil - base} mil de conversa sobre os ${base} mil com que nasceu). Faça o que a mensagem pede. O tamanho NÃO é motivo para parar, encurtar nem deixar item para outro chat: lista decidida vai até o fim neste chat (a conversa se resume sozinha perto do limite). Só quando TUDO o que foi decidido acabar, diga na resposta que a próxima tarefa sai mais barata num chat novo — cada passo aqui relê os ${mil} mil, contra os ~${base} mil com que um chat novo começa — e entregue o prompt pronto — com a frase do modelo e do esforço para o chat novo logo ACIMA do bloco (08 §8.3, "Quando dizer, qual dizer").`;
+    ? `[chat-parado hook] This chat already holds ${mil}k tokens (${mil - base}k of conversation over the ${base}k it started with). Do what the message asks. The size is NOT a reason to stop, cut short or leave an item for another chat: a decided list goes to the end in this chat (the conversation compacts itself near the limit). Only when EVERYTHING decided is done, say in the reply that the next task is cheaper in a new chat — every step here re-reads the ${mil}k, against the ~${base}k a new chat starts with — and write the next step at the top of PROGRESSO.md, so the new chat starts with just "continue" (a ready prompt block only if it opens in another project or folder), with the model and effort sentence right above the last line (08 §8.3).`
+    : `[gancho chat-parado] Este chat já tem ${mil} mil tokens (${mil - base} mil de conversa sobre os ${base} mil com que nasceu). Faça o que a mensagem pede. O tamanho NÃO é motivo para parar, encurtar nem deixar item para outro chat: lista decidida vai até o fim neste chat (a conversa se resume sozinha perto do limite). Só quando TUDO o que foi decidido acabar, diga na resposta que a próxima tarefa sai mais barata num chat novo — cada passo aqui relê os ${mil} mil, contra os ~${base} mil com que um chat novo começa — e escreva o próximo passo no topo do PROGRESSO.md, para o chat novo começar só com "continue" (prompt em bloco só se ele abrir em outro projeto ou pasta) — com a frase do modelo e do esforço logo ACIMA da última linha (08 §8.3, "Quando dizer, qual dizer").`;
 }
 
 function acharPasta(cwd) {
@@ -199,8 +197,8 @@ function sincronizar(e) {
     if (antes) novos = git('log', '--format=%h %ad %an %s', '--date=format:%d/%m %H:%M', '-8', antes + '..HEAD'); }
   catch (x) { r = (LINGUA === 'en' ? 'FAILED — tell the person in one line and fix it before touching files: ' : 'FALHOU — diga à pessoa numa linha e resolva antes de encostar em arquivo: ') + String(x.stderr || x.message).trim().split(/\r?\n/).slice(-2).join(' ').slice(0, 200); }
   console.log(LINGUA === 'en'
-    ? `[chat-parado hook] Git: this hook already ran git pull (${r}). YOU commit and push at the end of EVERY step, on your own — never ask the person to run pull or push. The project's CLAUDE.md sets a branch flow? That one prevails.`
-    : `[gancho chat-parado] Git: o gancho já rodou o git pull (${r}). O commit e o push ao fim de CADA passo são SEUS, sozinho — nunca peça à pessoa para rodar pull ou push. O CLAUDE.md do projeto manda fluxo com branch? Vale o dele.`);
+    ? `[chat-parado hook] Git: this hook already ran git pull (${r}). YOU commit and push at the end of every turn that CHANGED a file (no git on a reply that only answered), on your own — never ask the person to run pull or push. The project's CLAUDE.md sets a branch flow? That one prevails.`
+    : `[gancho chat-parado] Git: o gancho já rodou o git pull (${r}). O commit e o push no fim de todo turno que MUDOU arquivo (resposta só de pergunta: nada de git) são SEUS, sozinho — nunca peça à pessoa para rodar pull ou push. O CLAUDE.md do projeto manda fluxo com branch? Vale o dele.`);
   if (novos) console.log(LINGUA === 'en'
     ? `[chat-parado hook] Work done ELSEWHERE (other machine or person) since this machine's last pull — read it before anything, and tell the person in one line that you saw it:\n${novos}`
     : `[gancho chat-parado] Trabalho feito FORA DESTA MÁQUINA (outra máquina ou pessoa) desde o último pull daqui — leia antes de tudo e diga à pessoa, em uma linha, que viu:\n${novos}`);
@@ -219,13 +217,13 @@ function nuvem(e) {
 2. Commit and push go to branch ${br} — push only works there. Their computer sees it only after the merge into main (Create PR at the top of the diff view, then Merge on GitHub) or with \`claude --teleport\` there. Name the branch whenever you say where something is.
 3. Network: only the environment's allowlist (the default, Trusted, lets package registries and GitHub through). A project address blocked (403 on Vercel, Supabase…)? Don't insist: ask them to open the link in their browser and send what shows up, or give the way to allow it — cloud icon with the environment name, above the message box → hover the environment → gear → Network access: Custom → Allowed domains, one per line, and tick "Also include default list". Something only their machine reaches (a plugin, a logged-in dashboard) → that test is theirs, there.
 4. Here they have no terminal, file pane, attachments from their computer, plugins, /clear or Manual mode; nothing from their ~/.claude arrives (the lessons folder is .licoes/). Every command is YOURS. Every step of theirs says WHERE: "here in this chat", "in the browser", "on GitHub" or "on YOUR computer, in a local chat in folder X".
-5. A new chat here = a new session from the sidebar, from a fresh GitHub clone: commit and push first, and the resume prompt says which repository and branch to pick. An idle session loses its machine, and whatever wasn't pushed is gone.`
+5. A new chat here = a new session from the sidebar, from a fresh GitHub clone: commit, push and merge into main first; the new session gets the state file from the clone, so "continue" is enough. An idle session loses its machine, and whatever wasn't pushed is gone.`
     : `[gancho chat-parado] SESSÃO NA NUVEM (branch ${br}, repositório ${rep}). A pessoa enxerga menos aqui que no app do computador, e se perde. Na 1ª resposta, ANTES da tarefa, avise-a em até 4 linhas curtas o que aqui não funciona e o que fazer no lugar. E siga isto a sessão inteira:
 1. Nome de arquivo na resposta NÃO abre (o arquivo está nesta máquina da nuvem). Para mostrar um arquivo: mande-o com a ferramenta de enviar arquivo, se você tiver uma; senão, cole o trecho que importa, ou, depois do push, o link https://github.com/${rep}/blob/${br}/<caminho>. Nunca link de caminho, e nunca pergunte "onde você tentou abrir".
 2. Commit e push vão para o branch ${br} — o push só funciona nele. O computador dela só vê depois do merge no main (Create PR no topo da tela de diferenças, depois Merge no GitHub) ou com \`claude --teleport\` lá. Diga o branch sempre que falar de onde algo ficou.
 3. Rede: só a lista permitida do ambiente (o padrão, Trusted, deixa passar pacotes e GitHub). Endereço do projeto bloqueado (403 na Vercel, no Supabase…)? Não insista: peça que ela abra o link no navegador e mande o que aparecer, ou dê o caminho de liberar — ícone de nuvem com o nome do ambiente, acima da caixa de mensagem → passe o mouse no ambiente → engrenagem → Network access: Custom → Allowed domains, um por linha, e marque "Also include default list". O que só a máquina dela alcança (plugin, painel logado) → o teste é dela, lá.
 4. Aqui ela não tem terminal, painel de arquivo, anexo do computador, plugins, /clear nem modo Manual; nada do ~/.claude dela chega (a pasta de lições é o .licoes/). Todo comando é SEU. Todo passo dela diz ONDE: "aqui neste chat", "no navegador", "no GitHub" ou "no SEU computador, num chat local na pasta tal".
-5. Chat novo aqui = sessão nova pela barra lateral, de um clone novo do GitHub: commit e push antes, e o prompt de retomada diz o repositório e o branch a escolher. Sessão parada perde a máquina, e o que não teve push some.`);
+5. Chat novo aqui = sessão nova pela barra lateral, de um clone novo do GitHub: commit, push e merge na main antes; a sessão nova recebe o arquivo de estado pelo clone, e "continue" basta. Sessão parada perde a máquina, e o que não teve push some.`);
 }
 
 function emDia(e) {
