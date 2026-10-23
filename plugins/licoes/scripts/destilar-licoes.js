@@ -169,7 +169,9 @@ function destilar(transcript, cwd, arqLicoes) {
 function gravarNovas(arqLicoes, novas, cwd, auto) {
   const d2 = lerLicoes(arqLicoes);
   const iCab = d2.L.findIndex(x => /Próximo nº: \d+|Next no\.: \d+/.test(x));
-  let nr = iCab >= 0 ? Number(d2.L[iCab].match(/(\d+)/)[1]) : Math.max(0, ...d2.entradas.map(e => e.nr || 0)) + 1;
+
+  const acima = Math.max(0, ...d2.entradas.map(e => e.nr || 0)) + 1;
+  let nr = iCab >= 0 ? Math.max(Number(d2.L[iCab].match(/(\d+)/)[1]), acima) : acima;
   const primeira = nr, hoje = new Date().toLocaleDateString('pt-BR'), proj = path.basename(cwd || '') || '?';
   const bloco = [];
   for (const x of novas) {
@@ -668,6 +670,11 @@ function teste() {
     'grava a nova com o nº 41, sobe o cabeçalho, recusa a "parecida_com"');
   confere(depois.indexOf('Lição boa nova') < depois.indexOf('Lição de número 40') && depois.includes('\r\n'), 'a nova vai em cima, e o CRLF fica');
   confere(pedidos().length === 1, 'a faxina espera 7 dias');
+  const atras = path.join(tmp, 'atras.md');
+  fs.writeFileSync(atras, depois.replace('### Lição boa nova', licao(42, 'Escrita à mão sem subir o cabeçalho') + '### Lição boa nova'));
+  gravarNovas(atras, [{ titulo: 'Depois da mão', tema: '07', aconteceu: 'a', regra: 'b' }], tmp, true);
+  const ta = fs.readFileSync(atras, 'utf8');
+  confere(/### Depois da mão ‹tema: 07› ‹nº 43›/.test(ta) && ta.includes('Próximo nº: 44'), 'cabeçalho atrás de uma lição escrita à mão: usa o nº acima da maior, sem repetir');
   confere(/nº 41 gravada no meu\/: Lição boa nova/.test(fs.readFileSync(path.join(process.env.DESTILAR_ESTADO, 'novidades.json'), 'utf8')), 'a lição nova vira novidade para o começo do próximo chat');
 
   respostas('{"licoes":[]}'); filho('--rodar', tr, tmp, '--licoes', lic);
